@@ -4,6 +4,8 @@ import {
   ArrowUp,
   ChevronLeft,
   ChevronRight,
+  FileJson,
+  FolderOpen,
   HelpCircle,
   Printer,
   RotateCcw,
@@ -31,14 +33,18 @@ import { buildDefaultConfig, parseSkoreWorkbook } from "../js/skore-parser.js";
 import { calculateAnalysis, summariseStudents } from "../js/calculator.js";
 import { THRESHOLD_BANDS, thresholdBand } from "../js/config.js";
 import { getLanguage, setLanguage, t } from "../js/i18n.js";
+import { buildProjectPayload, exportProjectJson } from "../js/exporter.js";
+import { hydrateProjectPayload } from "../js/project-importer.js";
 import {
   applyPreset,
   loadNotes,
   loadPreferences,
   loadPresets,
   saveNote,
+  saveNotes,
   savePreferences,
   savePreset,
+  saveProjectDraft,
 } from "../js/storage.js";
 
 const BASKET_PRESETS = {
@@ -68,6 +74,7 @@ const BASKET_PRESETS = {
 const DEFAULT_BASKET_PRESET = "grade2_iw";
 const LOW_EVIDENCE_POINTS_COVERAGE = 0.6;
 const LOW_EVIDENCE_CLASS_GAP = 0.25;
+const ASSIGNMENT_USAGE_OPTIONS = ["include", "displayOnly", "exclude"];
 
 const CARD_TOUR_STEPS = [
   { part: "total", titleKey: "tour.totalTitle", bodyKey: "tour.totalBody" },
@@ -81,7 +88,7 @@ const FALLBACK_COPY = {
   nl: {
     localFirst: "Alles blijft lokaal in deze browser.",
     processing: "Bestand lokaal verwerken...",
-    parsed: "Bestand herkend. Controleer de mandjes en maak daarna kaarten.",
+    parsed: "Bestand herkend. Controleer eerst welke evaluaties meetellen.",
     basketNormalised: "Telt mee als",
     advancedAssignment: "Geavanceerde evaluatiekoppeling",
     visibleAdvice: "Interessante elementen",
@@ -91,8 +98,9 @@ const FALLBACK_COPY = {
     chartModalDescription: "Deze score is een deel van de jaarlijn van de leerling.",
     noScore: "Geen score",
     autosaved: "Opgeslagen",
-    stepFlow: "Stap {step} van 3",
+    stepFlow: "Stap {step} van 4",
     uploadFlow: "Upload",
+    reviewFlow: "Evaluaties",
     mapFlow: "Mandjes",
     dashboardFlow: "Kaarten",
     classCards: "Klasgroepen",
@@ -108,7 +116,7 @@ const FALLBACK_COPY = {
   en: {
     localFirst: "Everything stays local in this browser.",
     processing: "Processing file locally...",
-    parsed: "File detected. Check the baskets, then create cards.",
+    parsed: "File detected. First check which assessments should count.",
     basketNormalised: "Counts as",
     advancedAssignment: "Advanced assessment mapping",
     visibleAdvice: "Interesting signals",
@@ -118,8 +126,9 @@ const FALLBACK_COPY = {
     chartModalDescription: "This score is part of the student's year line.",
     noScore: "No score",
     autosaved: "Saved",
-    stepFlow: "Step {step} of 3",
+    stepFlow: "Step {step} of 4",
     uploadFlow: "Upload",
+    reviewFlow: "Assessments",
     mapFlow: "Baskets",
     dashboardFlow: "Cards",
     classCards: "Class groups",
@@ -161,7 +170,12 @@ export default function App() {
   const [evaluationDialog, setEvaluationDialog] = useState(null);
   const [histogramDialog, setHistogramDialog] = useState(null);
   const [printStudentId, setPrintStudentId] = useState(null);
+  const [uploadSummary, setUploadSummary] = useState(null);
+  const [projectSaveState, setProjectSaveState] = useState("idle");
+  const [noteSaveStatus, setNoteSaveStatus] = useState({});
   const fileInputRef = useRef(null);
+  const projectInputRef = useRef(null);
+  const noteSaveTimersRef = useRef(new Map());
 
   const c = (key, params = {}) => {
     const value = FALLBACK_COPY[language]?.[key] || FALLBACK_COPY.nl[key] || key;
@@ -209,8 +223,13 @@ export default function App() {
     if (patch.language) setLanguageState(patch.language);
   }
 
+  function markProjectDirty() {
+    if (model && config) setProjectSaveState("dirty");
+  }
+
   async function loadWorkbook(source, fileName) {
     setIsBusy(true);
+    setUploadSummary(null);
     setStatus({ kind: "busy", text: c("processing") });
     try {
       const workbook = await readXlsxWorkbook(source, { fileName });
@@ -222,13 +241,59 @@ export default function App() {
       setAnalysis(null);
       setFilters(normaliseFilters({}, nextConfig.threshold));
       setNotes(loadNotes(nextWorkspaceKey));
+      setProjectSaveState("dirty");
+      setUploadSummary({
+        fileName: parsedModel.fileName,
+        students: parsedModel.students.length,
+        classes: parsedModel.classes.length,
+        assignments: parsedModel.assignments.length,
+      });
       setStatus({ kind: "success", text: c("parsed") });
-      setWorkflowStep("map");
+      window.setTimeout(() => setWorkflowStep("review"), 820);
     } catch (error) {
       console.error(error);
+      setUploadSummary(null);
       setStatus({ kind: "error", text: `${t("status.parseError")} ${error?.message || ""}`.trim() });
     } finally {
       setIsBusy(false);
+    }
+  }
+
+  async function loadProjectFile(file) {
+    setIsBusy(true);
+    setUploadSummary(null);
+    setStatus({ kind: "busy", text: t("status.loadingProject", { fileName: file.name }) });
+    try {
+      const payload = JSON.parse(await file.text());
+      const restored = hydrateProjectPayload(payload, defaultFilters());
+      const restoredWorkspaceKey = `${restored.model.fileName}::${restored.config.subject || restored.model.subjects?.[0]?.value || "subject"}`.toLowerCase();
+      const nextAnalysis = calculateAnalysis(restored.model, restored.config);
+      setModel(restored.model);
+      setConfig(restored.config);
+      setAnalysis(nextAnalysis);
+      setFilters(normaliseFilters(restored.filters, restored.config.threshold));
+      setNotes(saveNotes(restoredWorkspaceKey, restored.notes));
+      setProjectSaveState("saved");
+      setStatus({
+        kind: "success",
+        text: t("status.projectLoaded", {
+          fileName: file.name,
+          students: restored.model.students.length,
+        }),
+      });
+      setWorkflowStep("dashboard");
+    } catch (error) {
+      console.error(error);
+      setProjectSaveState("error");
+      setStatus({
+        kind: "error",
+        text: error?.message === "INVALID_PROJECT" ? t("status.projectImportError") : error?.message || t("status.projectImportError"),
+      });
+      setWorkflowStep("upload");
+    } finally {
+      setIsBusy(false);
+      if (projectInputRef.current) projectInputRef.current.value = "";
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -264,12 +329,15 @@ export default function App() {
     setActiveTour(null);
     setEvaluationDialog(null);
     setHistogramDialog(null);
+    setUploadSummary(null);
+    setProjectSaveState("idle");
     setStatus({ kind: "idle", text: t("status.reset") });
     setWorkflowStep("upload");
   }
 
   function updateConfig(patch) {
     setConfig((current) => ({ ...current, ...patch }));
+    markProjectDirty();
   }
 
   function updateAssignment(assignmentId, patch) {
@@ -283,6 +351,7 @@ export default function App() {
         },
       },
     }));
+    markProjectDirty();
   }
 
   function updateBasketWeight(name, weight) {
@@ -293,6 +362,7 @@ export default function App() {
         category.name === name ? { ...category, weight } : category
       )),
     }));
+    markProjectDirty();
   }
 
   function applyBasketPreset(presetName) {
@@ -313,6 +383,7 @@ export default function App() {
         },
       ])) : current.assignments,
     }));
+    markProjectDirty();
   }
 
   function saveCurrentPreset(name) {
@@ -325,14 +396,44 @@ export default function App() {
     const preset = presets.find((item) => item.name === name);
     if (!preset || !config) return;
     setConfig({ ...applyPreset(config, preset), basketPreset: "custom" });
+    markProjectDirty();
   }
 
   function updateFilters(patch) {
     setFilters((current) => ({ ...current, ...patch }));
+    markProjectDirty();
   }
 
   function updateNote(studentId, value) {
-    setNotes(saveNote(workspaceKey, studentId, value));
+    setNoteSaveStatus((current) => ({ ...current, [studentId]: "saving" }));
+    try {
+      setNotes(saveNote(workspaceKey, studentId, value));
+      setNoteSaveStatus((current) => ({ ...current, [studentId]: "saved" }));
+      const timers = noteSaveTimersRef.current;
+      if (timers.has(studentId)) window.clearTimeout(timers.get(studentId));
+      timers.set(studentId, window.setTimeout(() => {
+        setNoteSaveStatus((current) => ({ ...current, [studentId]: "idle" }));
+        timers.delete(studentId);
+      }, 1800));
+      markProjectDirty();
+    } catch (error) {
+      console.error(error);
+      setNoteSaveStatus((current) => ({ ...current, [studentId]: "error" }));
+      setProjectSaveState("error");
+    }
+  }
+
+  function saveProjectBackup() {
+    if (!model || !config) return;
+    const exportAnalysis = analysis || calculateAnalysis(model, config);
+    const payload = buildProjectPayload(model, config, exportAnalysis, notes, filters, {});
+    const localSave = saveProjectDraft(workspaceKey, payload);
+    exportProjectJson(model, config, exportAnalysis, notes, filters, {});
+    setProjectSaveState(localSave.ok ? "saved" : "error");
+    setStatus({
+      kind: localSave.ok ? "success" : "warning",
+      text: localSave.ok ? t("status.projectSaved") : t("status.projectSavePartial"),
+    });
   }
 
   function scrollToStudent(studentId) {
@@ -355,7 +456,9 @@ export default function App() {
         {workflowStep !== "upload" ? (
           <AppHeader
             preferences={preferences}
+            projectSaveState={projectSaveState}
             onAnonymiseChange={(value) => persistPreferences({ anonymised: value })}
+            onSaveProject={saveProjectBackup}
             onReset={resetData}
           />
         ) : null}
@@ -368,7 +471,21 @@ export default function App() {
               isDragging={isDragging}
               setIsDragging={setIsDragging}
               fileInputRef={fileInputRef}
+              projectInputRef={projectInputRef}
+              uploadSummary={uploadSummary}
               onLoadWorkbook={loadWorkbook}
+              onLoadProject={loadProjectFile}
+            />
+          ) : null}
+
+          {workflowStep === "review" && model && config ? (
+            <EvaluationReviewScreen
+              c={c}
+              model={model}
+              config={config}
+              status={status}
+              onAssignmentChange={updateAssignment}
+              onContinue={() => setWorkflowStep("map")}
             />
           ) : null}
 
@@ -398,6 +515,7 @@ export default function App() {
               filteredStudents={filteredStudents}
               anonymised={Boolean(preferences.anonymised)}
               notes={notes}
+              noteSaveStatus={noteSaveStatus}
               onFiltersChange={updateFilters}
               onNoteChange={updateNote}
               onScrollToStudent={scrollToStudent}
@@ -442,7 +560,12 @@ export default function App() {
   );
 }
 
-function AppHeader({ preferences, onAnonymiseChange, onReset }) {
+function AppHeader({ preferences, projectSaveState, onAnonymiseChange, onSaveProject, onReset }) {
+  const saveLabel = projectSaveState === "dirty"
+    ? t("autosave.dirty")
+    : projectSaveState === "error"
+      ? t("autosave.error")
+      : t("autosave.ready");
   return (
     <header className="app-header">
       <div className="brand-heading">
@@ -463,11 +586,16 @@ function AppHeader({ preferences, onAnonymiseChange, onReset }) {
         </label>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="autosave-indicator" role="status" aria-label={t("autosave.ready")}>
+            <button
+              className={cn("autosave-indicator", projectSaveState === "dirty" && "is-dirty", projectSaveState === "error" && "is-error")}
+              type="button"
+              onClick={onSaveProject}
+              aria-label={t("button.saveProject")}
+            >
               <Save size={18} aria-hidden="true" />
-            </div>
+            </button>
           </TooltipTrigger>
-          <TooltipContent>{t("autosave.ready")}</TooltipContent>
+          <TooltipContent>{saveLabel}</TooltipContent>
         </Tooltip>
         <Button variant="outline" type="button" onClick={onReset}>
           <RotateCcw size={16} aria-hidden="true" />
@@ -484,11 +612,26 @@ function UploadScreen({
   isDragging,
   setIsDragging,
   fileInputRef,
+  projectInputRef,
+  uploadSummary,
   onLoadWorkbook,
+  onLoadProject,
 }) {
+  function handleIncomingFile(file) {
+    if (!file) return;
+    if (/\.json$/i.test(file.name)) onLoadProject(file);
+    else onLoadWorkbook(file, file.name);
+  }
+
   function handleFileSelection(event) {
     const [file] = event.target.files || [];
-    if (file) onLoadWorkbook(file, file.name);
+    handleIncomingFile(file);
+    event.target.value = "";
+  }
+
+  function handleProjectSelection(event) {
+    const [file] = event.target.files || [];
+    if (file) onLoadProject(file);
     event.target.value = "";
   }
 
@@ -496,7 +639,7 @@ function UploadScreen({
     event.preventDefault();
     setIsDragging(false);
     const [file] = event.dataTransfer.files || [];
-    if (file) onLoadWorkbook(file, file.name);
+    handleIncomingFile(file);
   }
 
   return (
@@ -515,7 +658,7 @@ function UploadScreen({
           <p>{t("upload.subtitle")}</p>
         </div>
 
-        <Card className="upload-card">
+        <Card className={cn("upload-card", uploadSummary && "is-complete")}>
           <CardContent>
             <button
               type="button"
@@ -532,7 +675,7 @@ function UploadScreen({
               }}
               onDrop={handleDrop}
             >
-              <input ref={fileInputRef} className="sr-only" type="file" accept=".xlsx,.xls" onChange={handleFileSelection} />
+              <input ref={fileInputRef} className="sr-only" type="file" accept=".xlsx,.xls,.json,application/json" onChange={handleFileSelection} />
               <span className="drop-zone-icon" aria-hidden="true">
                 {isBusy ? <Spinner /> : <UploadCloud size={30} />}
               </span>
@@ -540,10 +683,119 @@ function UploadScreen({
               <span className="drop-zone-help">{t("upload.help")}</span>
             </button>
 
+            {uploadSummary ? (
+              <div className="upload-success-panel" aria-live="polite">
+                <div className="upload-success-icon" aria-hidden="true">
+                  <ShieldCheck size={22} />
+                </div>
+                <div>
+                  <strong>{t("upload.detectedTitle")}</strong>
+                  <p>{t("upload.detectedHelp", { fileName: uploadSummary.fileName })}</p>
+                  <dl>
+                    <div>
+                      <dt>{t("detected.students")}</dt>
+                      <dd>{uploadSummary.students}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("detected.classes")}</dt>
+                      <dd>{uploadSummary.classes}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("detected.assignments")}</dt>
+                      <dd>{uploadSummary.assignments}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="project-import-row">
+              <input ref={projectInputRef} className="sr-only" type="file" accept=".json,application/json" onChange={handleProjectSelection} />
+              <Button variant="ghost" type="button" onClick={() => projectInputRef.current?.click()}>
+                <FolderOpen size={16} aria-hidden="true" />
+                {t("button.importProject")}
+              </Button>
+              <span>{t("upload.importHelp")}</span>
+            </div>
+
             <div className={cn("status-pill", `status-pill--${status.kind}`)} aria-live="polite">
               {isBusy ? <Spinner /> : <ShieldCheck size={15} aria-hidden="true" />}
               <span>{status.text}</span>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
+function EvaluationReviewScreen({
+  c,
+  model,
+  config,
+  status,
+  onAssignmentChange,
+  onContinue,
+}) {
+  const counts = assignmentUsageCounts(model.assignments, config);
+  const suggestions = reviewSuggestionItems(model.assignments);
+  return (
+    <section className="workflow-screen review-screen">
+      <FlowIndicator active="review" c={c} />
+      <div className="screen-heading">
+        <div>
+          <p className="eyebrow">{t("step.2")}</p>
+          <h2>{t("review.title")}</h2>
+          <p>{t("review.subtitle")}</p>
+        </div>
+        <Button type="button" onClick={onContinue}>
+          <ChevronRight size={16} aria-hidden="true" />
+          {t("review.continue")}
+        </Button>
+      </div>
+
+      <div className="review-layout">
+        <Card className="review-guidance-card">
+          <CardHeader>
+            <CardTitle>{t("review.guidanceTitle")}</CardTitle>
+            <CardDescription>{t("review.guidanceBody")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="usage-summary-grid">
+              <StatCard label={t("usage.include")} value={counts.include} compact />
+              <StatCard label={t("usage.displayOnly")} value={counts.displayOnly} compact />
+              <StatCard label={t("usage.exclude")} value={counts.exclude} compact />
+            </div>
+            <div className="review-suggestions">
+              <strong>{t("review.suggestedTitle")}</strong>
+              {suggestions.length ? (
+                <ul>
+                  {suggestions.map((item) => (
+                    <li key={`${item.assignment.id}-${item.reasonKey}`}>
+                      <span>{item.assignment.title}</span>
+                      <small>{t(item.reasonKey)}</small>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{t("review.suggestedEmpty")}</p>
+              )}
+            </div>
+            <div className={cn("status-pill", `status-pill--${status.kind}`)}>{status.text}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="evaluation-review-card">
+          <CardHeader>
+            <CardTitle>{t("review.tableTitle")}</CardTitle>
+            <CardDescription>{t("review.tableHelp")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <EvaluationUsageTable
+              assignments={model.assignments}
+              config={config}
+              onAssignmentChange={onAssignmentChange}
+            />
           </CardContent>
         </Card>
       </div>
@@ -570,13 +822,14 @@ function MappingScreen({
   const basketCategories = basketCategoriesFromConfig(config);
   const categoryOptions = basketCategories.map((category) => category.name);
   const normalised = normaliseBasketPercentages(basketCategories);
+  const transferPairs = basketTransferHints(basketCategories);
 
   return (
     <section className="workflow-screen map-screen">
       <FlowIndicator active="map" c={c} />
       <div className="screen-heading">
         <div>
-          <p className="eyebrow">{t("step.2")}</p>
+          <p className="eyebrow">{t("step.3")}</p>
           <h2>{t("mapping.title")}</h2>
         </div>
         <Button type="button" disabled={isBusy} onClick={onGenerate}>
@@ -584,6 +837,8 @@ function MappingScreen({
           {isBusy ? t("mapping.generating") : t("mapping.generate")}
         </Button>
       </div>
+
+      <SetupProgressRail />
 
       <div className="map-grid">
         <DetectedSummary model={model} />
@@ -634,30 +889,6 @@ function MappingScreen({
                   <option value="custom">{t("preset.custom")}</option>
                 </Select>
               </Field>
-              <Field label={t("mapping.savePreset")}>
-                <div className="inline-field">
-                  <Input
-                    value={presetName}
-                    placeholder={t("mapping.presetPlaceholder")}
-                    onChange={(event) => setPresetName(event.target.value)}
-                  />
-                  <Button variant="outline" type="button" onClick={() => {
-                    onSavePreset(presetName);
-                    setPresetName("");
-                  }}>
-                    <Save size={16} aria-hidden="true" />
-                    {t("button.savePreset")}
-                  </Button>
-                </div>
-              </Field>
-              <Field label={t("mapping.savedPreset")}>
-                <Select defaultValue="" onChange={(event) => onApplySavedPreset(event.target.value)}>
-                  <option value="">{t("mapping.noPreset")}</option>
-                  {presets.map((preset) => (
-                    <option key={preset.name} value={preset.name}>{preset.name}</option>
-                  ))}
-                </Select>
-              </Field>
             </div>
             <div className="basket-grid">
               {basketCategories.map((category) => (
@@ -675,6 +906,56 @@ function MappingScreen({
                 </label>
               ))}
             </div>
+            {transferPairs.length ? (
+              <div className="basket-transfer-panel">
+                <div>
+                  <p className="eyebrow">{t("mapping.transferTitle")}</p>
+                  <strong>{t("mapping.transferIntro")}</strong>
+                </div>
+                <div className="basket-transfer-list">
+                  {transferPairs.map((pair) => (
+                    <span key={`${pair.dw}-${pair.ex}`} className="basket-transfer-chip">
+                      <span>{pair.ex}</span>
+                      <ArrowDown size={14} aria-hidden="true" />
+                      <span>{pair.dw}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <Accordion type="single" collapsible className="preset-tools-accordion">
+              <AccordionItem value="preset-tools">
+                <AccordionTrigger>{t("mapping.presetTools")}</AccordionTrigger>
+                <AccordionContent>
+                  <div className="form-grid">
+                    <Field label={t("mapping.savePreset")}>
+                      <div className="inline-field">
+                        <Input
+                          value={presetName}
+                          placeholder={t("mapping.presetPlaceholder")}
+                          onChange={(event) => setPresetName(event.target.value)}
+                        />
+                        <Button variant="outline" type="button" onClick={() => {
+                          onSavePreset(presetName);
+                          setPresetName("");
+                        }}>
+                          <Save size={16} aria-hidden="true" />
+                          {t("button.savePreset")}
+                        </Button>
+                      </div>
+                    </Field>
+                    <Field label={t("mapping.savedPreset")}>
+                      <Select defaultValue="" onChange={(event) => onApplySavedPreset(event.target.value)}>
+                        <option value="">{t("mapping.noPreset")}</option>
+                        {presets.map((preset) => (
+                          <option key={preset.name} value={preset.name}>{preset.name}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </CardContent>
         </Card>
 
@@ -717,6 +998,7 @@ function DashboardScreen({
   filteredStudents,
   anonymised,
   notes,
+  noteSaveStatus,
   onFiltersChange,
   onNoteChange,
   onScrollToStudent,
@@ -745,7 +1027,7 @@ function DashboardScreen({
       <div className="dashboard-header">
         <div className="screen-heading">
           <div>
-            <p className="eyebrow">{t("step.3")}</p>
+            <p className="eyebrow">{t("step.4")}</p>
             <h2>{analysis.subject || t("dashboard.fallbackTitle")}</h2>
             <p>{t("dashboard.detectedLine", {
               fileName: analysis.fileName,
@@ -828,6 +1110,7 @@ function DashboardScreen({
             anonymised={anonymised}
             displayIndex={index}
             note={notes[student.id] || ""}
+            noteStatus={noteSaveStatus[student.id] || "idle"}
             onNoteChange={onNoteChange}
             onScrollToStudent={onScrollToStudent}
             onStartTour={onStartTour}
@@ -844,9 +1127,32 @@ function DashboardScreen({
   );
 }
 
+function SetupProgressRail() {
+  const steps = [
+    { number: 1, title: t("mapping.stepCourse"), body: t("mapping.railCourse") },
+    { number: 2, title: t("mapping.stepBaskets"), body: t("mapping.railBaskets") },
+    { number: 3, title: t("mapping.stepCheck"), body: t("mapping.railGenerate") },
+  ];
+
+  return (
+    <div className="setup-progress-rail" aria-label={t("mapping.progressLabel")}>
+      {steps.map((step) => (
+        <div className="setup-progress-step" key={step.number}>
+          <span>{step.number}</span>
+          <div>
+            <strong>{step.title}</strong>
+            <p>{step.body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FlowIndicator({ active, c }) {
   const steps = [
     ["upload", c("uploadFlow")],
+    ["review", c("reviewFlow")],
     ["map", c("mapFlow")],
     ["dashboard", c("dashboardFlow")],
   ];
@@ -933,6 +1239,64 @@ function WarningsPanel({ warnings }) {
   );
 }
 
+function EvaluationUsageTable({ assignments, config, onAssignmentChange }) {
+  return (
+    <Table className="evaluation-usage-table">
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t("mapping.assignment")}</TableHead>
+          <TableHead>{t("table.sheet")}</TableHead>
+          <TableHead>{t("mapping.date")}</TableHead>
+          <TableHead>{t("mapping.category")}</TableHead>
+          <TableHead>{t("mapping.max")}</TableHead>
+          <TableHead>{t("review.useFor")}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {assignments.map((assignment) => {
+          const override = config.assignments?.[assignment.id] || {};
+          const usage = assignmentUsage(override);
+          return (
+            <TableRow key={assignment.id} className={cn("evaluation-usage-row", usage !== "include" && "is-muted")}>
+              <TableCell>
+                <strong>{assignment.title}</strong>
+                <small>{assignment.subject || ""}</small>
+              </TableCell>
+              <TableCell>{assignment.sheetName}</TableCell>
+              <TableCell>{assignment.date || t("option.notAvailable")}</TableCell>
+              <TableCell>{override.category || assignment.category || "OTHER"}</TableCell>
+              <TableCell>{formatNumber(override.maxPoints ?? assignment.maxPoints)}</TableCell>
+              <TableCell>
+                <UsageSegmentedControl
+                  value={usage}
+                  onChange={(nextUsage) => onAssignmentChange(assignment.id, assignmentUsagePatch(nextUsage, override))}
+                />
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
+
+function UsageSegmentedControl({ value, onChange }) {
+  return (
+    <div className="usage-segment" role="group" aria-label={t("review.useFor")}>
+      {ASSIGNMENT_USAGE_OPTIONS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          className={cn(value === option && "is-active")}
+          onClick={() => onChange(option)}
+        >
+          {t(`usage.${option}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AssignmentMappingTable({ model, config, categoryOptions, onAssignmentChange }) {
   return (
     <Table>
@@ -951,20 +1315,22 @@ function AssignmentMappingTable({ model, config, categoryOptions, onAssignmentCh
       <TableBody>
         {model.assignments.map((assignment, index) => {
           const override = config.assignments?.[assignment.id] || {};
+          const usage = assignmentUsage(override);
           const category = override.category || inferBasketCategory(assignment, index, model.assignments, categoryOptions);
           const options = unique([...categoryOptions, category, assignment.category, "OTHER"]);
           return (
             <TableRow key={assignment.id}>
               <TableCell>
-                <input
-                  type="checkbox"
-                  checked={override.active !== false}
-                  onChange={(event) => onAssignmentChange(assignment.id, { active: event.target.checked })}
-                />
+                <Select value={usage} onChange={(event) => onAssignmentChange(assignment.id, assignmentUsagePatch(event.target.value, override))}>
+                  {ASSIGNMENT_USAGE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{t(`usage.${option}`)}</option>
+                  ))}
+                </Select>
               </TableCell>
               <TableCell>
                 <input
                   type="checkbox"
+                  disabled={usage !== "include"}
                   checked={override.required !== false}
                   onChange={(event) => onAssignmentChange(assignment.id, { required: event.target.checked })}
                 />
@@ -1108,6 +1474,7 @@ function StudentCard({
   anonymised,
   displayIndex,
   note,
+  noteStatus,
   onNoteChange,
   onScrollToStudent,
   onStartTour,
@@ -1168,27 +1535,11 @@ function StudentCard({
 
       <CardContent>
         <div className="card-grid score-visual-grid">
-          <section className="card-section" data-tour-part="table">
-            <h4>{t("student.summary")}</h4>
-            <ScoreTable rows={student.categoryRows} />
-            <Accordion type="single" collapsible className="calculation-accordion">
-              <AccordionItem value="calculation">
-                <AccordionTrigger>{t("student.calculationTrace")}</AccordionTrigger>
-                <AccordionContent>
-                  <p>{t("student.evidenceBody", {
-                    available: student.evidence.availableRequired,
-                    expected: student.evidence.expectedRequired,
-                    coverage: formatPercent(student.evidenceCoverage),
-                  })}</p>
-                  <p>{t("student.traceBody")}</p>
-                  <p>{t("student.importedFinal")}: {student.importedFinal ? `${student.importedFinal.source} ${student.importedFinal.field} = ${formatNumber(student.importedFinal.value)}%` : t("student.noImportedFinal")}</p>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </section>
-
           <section className="card-section" data-tour-part="graph">
-            <h4>{t("student.visualContext")}</h4>
+            <div className="section-row graph-section-heading">
+              <h4>{t("student.visualContext")}</h4>
+              <span>{t("chart.clickDots")}</span>
+            </div>
             <YearTrend trend={student.trend} student={student} onEvaluationClick={onEvaluationClick} />
             <GraphInterpretation trend={student.trend} />
             <div className="peer-chart-grid">
@@ -1199,23 +1550,29 @@ function StudentCard({
               <MiniHistogram students={peers} selected={student} anonymised={anonymised} onBinClick={onHistogramClick} />
             </div>
           </section>
+
+          <section className="card-section compact-detail-section" data-tour-part="table">
+            <Accordion type="single" collapsible className="score-detail-accordion">
+              <AccordionItem value="score">
+                <AccordionTrigger>{t("student.summary")}</AccordionTrigger>
+                <AccordionContent>
+                  <ScoreTable rows={student.categoryRows} />
+                  <div className="calculation-note">
+                    <p>{t("student.evidenceBody", {
+                      available: student.evidence.availableRequired,
+                      expected: student.evidence.expectedRequired,
+                      coverage: formatPercent(student.evidenceCoverage),
+                    })}</p>
+                    <p>{t("student.traceBody")}</p>
+                    <p>{t("student.importedFinal")}: {student.importedFinal ? `${student.importedFinal.source} ${student.importedFinal.field} = ${formatNumber(student.importedFinal.value)}%` : t("student.noImportedFinal")}</p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </section>
         </div>
 
         <div className="card-grid support-grid">
-          <section className="card-section print-optional">
-            <h4>{t("student.comments")}</h4>
-            {student.comments.length ? (
-              <ul className="comment-list">
-                {student.comments.map((comment, index) => (
-                  <li key={`${comment.source}-${comment.field}-${index}`}>
-                    <strong>{comment.source} - {comment.field}</strong>
-                    {comment.text}
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="muted">{t("student.noComments")}</p>}
-          </section>
-
           <section className="card-section" data-tour-part="advice">
             <h4>{t("student.flags")}</h4>
             <PedagogicalSummary student={student} />
@@ -1236,10 +1593,35 @@ function StudentCard({
               </Accordion>
             ) : null}
           </section>
+
+          <section className="card-section print-optional compact-detail-section">
+            <Accordion type="single" collapsible>
+              <AccordionItem value="comments">
+                <AccordionTrigger>{t("student.comments")}</AccordionTrigger>
+                <AccordionContent>
+                  {student.comments.length ? (
+                    <ul className="comment-list">
+                      {student.comments.map((comment, index) => (
+                        <li key={`${comment.source}-${comment.field}-${index}`}>
+                          <strong>{comment.source} - {comment.field}</strong>
+                          {comment.text}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="muted">{t("student.noComments")}</p>}
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </section>
         </div>
 
         <section className="card-section notes-section" data-tour-part="notes">
-          <h4>{t("student.teacherJudgement")}</h4>
+          <div className="section-row notes-heading">
+            <h4>{t("student.teacherJudgement")}</h4>
+            <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
+              {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
+            </span>
+          </div>
           <Textarea
             value={note}
             onChange={(event) => onNoteChange(student.id, event.target.value)}
@@ -1293,7 +1675,12 @@ function ScoreTable({ rows }) {
             <TableCell>{formatNumber(row.pointsEarned)}</TableCell>
             <TableCell>{formatAvailablePoints(row)}</TableCell>
             <TableCell>{row.rawPercentage == null ? t("option.notAvailable") : `${formatNumber(row.rawPercentage)}%`}</TableCell>
-            <TableCell>{formatPercent(row.effectiveWeight)}</TableCell>
+            <TableCell>
+              <span className="weight-cell-stack">
+                <span>{formatPercent(row.effectiveWeight)}</span>
+                {row.transferredWeight > 0 ? <small>{t("student.transferredWeight")}</small> : null}
+              </span>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -1354,7 +1741,9 @@ function YearTrend({ trend, student, onEvaluationClick }) {
   const yFor = (value) => bottom - (clamp(value, 0, 100) / 100) * axisHeight;
   const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(index)} ${yFor(point.value)}`).join(" ");
   const trendLine = linearTrendLine(points.map((point) => point.value));
-  const labels = dedupeAxisLabels(points);
+  const labels = groupedAxisLabels(points);
+  const periodLines = periodBoundaryLines(labels);
+  const periodSpans = periodSpansFromAxisLabels(labels);
 
   return (
     <figure className="year-chart">
@@ -1366,6 +1755,14 @@ function YearTrend({ trend, student, onEvaluationClick }) {
             <line x1={left - 4} y1={yFor(value)} x2={width - 20} y2={yFor(value)} stroke="var(--chart-grid)" />
             <text x="10" y={yFor(value) + 4}>{value}%</text>
           </g>
+        ))}
+        {periodLines.map((line) => (
+          <line key={`period-line-${line.index}`} className="year-period-marker" x1={xFor(line.index)} y1={top} x2={xFor(line.index)} y2={bottom} />
+        ))}
+        {periodSpans.map((span) => (
+          <text key={`period-span-${span.period}-${span.startIndex}`} className="year-period-label" x={xFor(span.centerIndex)} y={top - 7} textAnchor="middle">
+            {t("chart.periodGroup", { period: span.period })}
+          </text>
         ))}
         <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" />
         {trendLine ? (
@@ -1380,7 +1777,7 @@ function YearTrend({ trend, student, onEvaluationClick }) {
         {points.map((point, index) => (
           <g
             key={`${point.assignmentId || point.label}-${index}`}
-            className={cn("trend-dot", isExamPoint(point) && "is-exam-point")}
+            className={cn("trend-dot", isExamPoint(point) && "is-exam-point", point.usage === "displayOnly" && "is-context-point")}
             role="button"
             tabIndex={0}
             transform={`translate(${xFor(index)}, ${yFor(point.value)})`}
@@ -1393,13 +1790,13 @@ function YearTrend({ trend, student, onEvaluationClick }) {
             }}
             aria-label={`${t("chart.evaluation")}: ${point.label}, ${formatNumber(point.value)}%`}
           >
-            <title>{`${point.label}: ${formatNumber(point.value)}%`}</title>
+            <title>{`${point.label}: ${formatNumber(point.value)}%${point.usage === "displayOnly" ? ` - ${t("usage.displayOnlyHelp")}` : ""}`}</title>
             <text className="trend-dot-label" x="0" y="-15" textAnchor="middle">{formatNumber(point.value)}%</text>
             <circle cx="0" cy="0" r="7" />
           </g>
         ))}
         {labels.map((label) => (
-          <text key={label.index} className="axis-label" x={xFor(label.index)} y={bottom + 30} textAnchor="middle">{label.text}</text>
+          <text key={`${label.text}-${label.startIndex}`} className="axis-label" x={xFor(label.centerIndex)} y={bottom + 30} textAnchor="middle">{label.text}</text>
         ))}
       </svg>
     </figure>
@@ -1601,6 +1998,7 @@ function StudentTourOverlay({ c, activeTour, onChange, onClose }) {
       setRect(null);
       return undefined;
     }
+    let frame = 0;
     const update = () => {
       const target = document.querySelector(`[data-student-id="${CSS.escape(activeTour.studentId)}"] [data-tour-part="${CSS.escape(step.part)}"]`);
       if (!target) {
@@ -1608,17 +2006,28 @@ function StudentTourOverlay({ c, activeTour, onChange, onClose }) {
         return;
       }
       const box = target.getBoundingClientRect();
+      const offscreen = box.top < 84 || box.bottom > window.innerHeight - 84;
+      if (offscreen) {
+        target.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          block: "center",
+        });
+        frame = window.requestAnimationFrame(update);
+        return;
+      }
+      const updatedBox = target.getBoundingClientRect();
       setRect({
-        top: box.top,
-        left: box.left,
-        width: box.width,
-        height: box.height,
+        top: updatedBox.top,
+        left: updatedBox.left,
+        width: updatedBox.width,
+        height: updatedBox.height,
       });
     };
     update();
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
+      if (frame) window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
@@ -1645,7 +2054,10 @@ function StudentTourOverlay({ c, activeTour, onChange, onClose }) {
         }}
       />
       <div className="tour-panel" style={{ top: panelTop, left: panelLeft }}>
-        <p className="eyebrow">{t("tour.title", { student: "" }).replace(":", "").trim()}</p>
+        <div className="tour-panel-meta">
+          <p className="eyebrow">{t("tour.title", { student: "" }).replace(":", "").trim()}</p>
+          <span>{t("tour.stepProgress", { current: activeTour.step + 1, total: CARD_TOUR_STEPS.length })}</span>
+        </div>
         <h3 id="tour-title">{t(step.titleKey)}</h3>
         <p>{t(step.bodyKey)}</p>
         <div className="tour-actions">
@@ -1695,6 +2107,12 @@ function EvaluationDialog({ c, data, onOpenChange }) {
             />
             <StatCard label={t("mapping.category")} value={assignment?.category || point.category || ""} compact />
             <StatCard label={t("mapping.max")} value={assignment?.maxPoints ?? score?.maxPoints ?? point.maxPoints ?? ""} compact />
+            {point.usage === "displayOnly" ? (
+              <p className="context-evaluation-note">
+                <FileJson size={16} aria-hidden="true" />
+                {t("usage.displayOnlyHelp")}
+              </p>
+            ) : null}
             <p className="muted">{point.title || assignment?.title || ""}</p>
             <p className="muted">{assignment?.sheetName || point.sheetName || ""} {assignment?.date || point.date || ""}</p>
           </div>
@@ -1777,11 +2195,54 @@ function createInitialConfig(model) {
         ...(base.assignments?.[assignment.id] || {}),
         active: true,
         required: true,
+        usage: "include",
         category: inferBasketCategory(assignment, index, model.assignments, preset.order),
         maxPoints: assignment.maxPoints,
       },
     ])),
   };
+}
+
+function assignmentUsage(override = {}) {
+  if (ASSIGNMENT_USAGE_OPTIONS.includes(override.usage)) return override.usage;
+  return override.active === false ? "exclude" : "include";
+}
+
+function assignmentUsagePatch(usage, override = {}) {
+  const nextUsage = ASSIGNMENT_USAGE_OPTIONS.includes(usage) ? usage : "include";
+  return {
+    ...override,
+    usage: nextUsage,
+    active: nextUsage !== "exclude",
+    required: nextUsage === "include",
+  };
+}
+
+function assignmentUsageCounts(assignments = [], config = {}) {
+  return assignments.reduce((counts, assignment) => {
+    const usage = assignmentUsage(config.assignments?.[assignment.id] || {});
+    counts[usage] += 1;
+    return counts;
+  }, { include: 0, displayOnly: 0, exclude: 0 });
+}
+
+function reviewSuggestionItems(assignments = []) {
+  return assignments
+    .map((assignment) => {
+      const text = `${assignment.title || ""} ${assignment.sheetName || ""}`.toLowerCase();
+      if (/(diagnost|diagnos|oefen|formatief|proef)/i.test(text)) {
+        return { assignment, reasonKey: "review.reasonDiagnostic" };
+      }
+      if (/(inhaal|herkansing|herkans|redo|retake|bis|tweede kans|2e kans|2de kans)/i.test(text)) {
+        return { assignment, reasonKey: "review.reasonRetake" };
+      }
+      if (!Number.isFinite(Number(assignment.maxPoints)) || Number(assignment.maxPoints) <= 0) {
+        return { assignment, reasonKey: "review.reasonNoMax" };
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .slice(0, 6);
 }
 
 function basketCategoriesFromConfig(config) {
@@ -1818,6 +2279,16 @@ function categoriesFromPreset(preset) {
 
 function presetLabel(preset) {
   return preset.labelKey ? t(preset.labelKey) : preset.label;
+}
+
+function basketTransferHints(categories = []) {
+  const names = new Set(categories.map((category) => String(category.name || "").toUpperCase()));
+  return categories
+    .map((category) => String(category.name || "").toUpperCase().match(/^DW(\d+)$/)?.[1])
+    .filter(Boolean)
+    .filter((segment, index, all) => all.indexOf(segment) === index)
+    .filter((segment) => names.has(`EX${segment}`))
+    .map((segment) => ({ dw: `DW${segment}`, ex: `EX${segment}` }));
 }
 
 function suggestBasketPreset(model) {
@@ -2089,27 +2560,70 @@ function linearTrendLine(values) {
   };
 }
 
-function dedupeAxisLabels(points) {
+function groupedAxisLabels(points) {
   if (!points.length) return [];
-  const maxLabels = points.length > 12 ? 6 : points.length > 8 ? 7 : points.length;
-  const indexes = new Set([0, points.length - 1]);
-  if (maxLabels > 2) {
-    const step = (points.length - 1) / (maxLabels - 1);
-    for (let i = 1; i < maxLabels - 1; i += 1) {
-      indexes.add(Math.round(i * step));
+  const labels = [];
+
+  points.forEach((point, index) => {
+    const text = trendAxisLabel(point, index);
+    const previous = labels[labels.length - 1];
+    if (previous?.text === text) {
+      previous.endIndex = index;
+      previous.centerIndex = (previous.startIndex + previous.endIndex) / 2;
+      return;
     }
-  }
-  const used = new Set();
-  return points
-    .map((point, index) => {
-      const raw = point.period || point.category || point.label || "";
-      const text = String(raw).replace(/\s+/g, " ").trim().slice(0, 12) || String(index + 1);
-      return { index, text };
-    })
-    .filter((label) => indexes.has(label.index))
-    .filter((label) => {
-      if (used.has(label.text)) return false;
-      used.add(label.text);
-      return true;
+    labels.push({
+      text,
+      startIndex: index,
+      endIndex: index,
+      centerIndex: index,
+      period: periodNumberFromLabel(text),
     });
+  });
+
+  return labels;
+}
+
+function trendAxisLabel(point, index) {
+  const raw = point.period || point.label || point.category || "";
+  const text = String(raw).replace(/\s+/g, " ").trim().toUpperCase();
+  return text.slice(0, 12) || String(index + 1);
+}
+
+function periodNumberFromLabel(label) {
+  const text = String(label || "").toUpperCase();
+  if (/EXPAR|PAR\s*EX|PAAS|EASTER/.test(text)) return 2;
+  const match = text.match(/\b(?:DW|EX)\s*(\d+)\b/);
+  return match ? Number(match[1]) : null;
+}
+
+function periodBoundaryLines(labels) {
+  const lines = [];
+  for (let index = 1; index < labels.length; index += 1) {
+    const previous = labels[index - 1];
+    const current = labels[index];
+    if (previous.period == null || current.period == null || previous.period === current.period) continue;
+    lines.push({ index: (previous.endIndex + current.startIndex) / 2 });
+  }
+  return lines;
+}
+
+function periodSpansFromAxisLabels(labels) {
+  const spans = [];
+  for (const label of labels) {
+    if (label.period == null) continue;
+    const previous = spans[spans.length - 1];
+    if (previous?.period === label.period) {
+      previous.endIndex = label.endIndex;
+      previous.centerIndex = (previous.startIndex + previous.endIndex) / 2;
+      continue;
+    }
+    spans.push({
+      period: label.period,
+      startIndex: label.startIndex,
+      endIndex: label.endIndex,
+      centerIndex: label.centerIndex,
+    });
+  }
+  return spans.length > 1 ? spans : [];
 }

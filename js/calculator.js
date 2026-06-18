@@ -22,7 +22,8 @@ const ADVICE_RULES = {
 
 export function calculateAnalysis(model, config) {
   const assignments = normaliseAssignments(model.assignments, config);
-  const categories = normaliseWeights(config.categories, assignments);
+  const scoreAssignments = assignments.filter((assignment) => assignment.countsForTotal);
+  const categories = normaliseWeights(config.categories, scoreAssignments);
   const students = model.students.map((student) => calculateStudent(student, assignments, categories, config));
 
   applyClassPercentiles(students);
@@ -66,18 +67,31 @@ function normaliseAssignments(assignments, config) {
     .map((assignment) => {
       const override = config.assignments?.[assignment.id] || {};
       const maxPoints = numberOr(override.maxPoints, assignment.maxPoints);
+      const usage = normaliseAssignmentUsage(override);
+      const active = usage !== "exclude" && override.active !== false && maxPoints > 0;
       return {
         ...assignment,
         classCodes: Array.from(assignment.classCodes || []),
         category: override.category || assignment.category || "OTHER",
         maxPoints,
-        active: override.active !== false && maxPoints > 0,
-        required: override.required !== false,
+        usage,
+        active,
+        countsForTotal: active && usage === "include",
+        useInTrend: active && (usage === "include" || usage === "displayOnly"),
+        visibleInGraph: active && usage !== "exclude",
+        required: override.required !== false && usage === "include",
         assessmentGroup: assessmentGroupKey(assignment),
         isRetake: isRetakeAssignment(assignment),
       };
     })
     .filter((assignment) => assignment.active);
+}
+
+function normaliseAssignmentUsage(override = {}) {
+  if (override.usage === "displayOnly" || override.usage === "exclude" || override.usage === "include") {
+    return override.usage;
+  }
+  return override.active === false ? "exclude" : "include";
 }
 
 function normaliseWeights(configCategories = [], assignments) {
@@ -138,6 +152,7 @@ function calculateStudent(student, assignments, categories, config) {
     ? categoryRows.reduce((sum, row) => sum + (Number.isFinite(row.rawPercentage) ? row.rawPercentage * row.effectiveWeight : 0), 0)
     : null;
   const expectedRequired = classAssignments.filter((assignment) => {
+    if (!assignment.countsForTotal) return false;
     if (!assignment.required) return false;
     if (isCoveredMissingScore(student, assignment, classAssignments)) return false;
     return student.scores.get(assignment.id)?.status !== "excused";
@@ -147,7 +162,7 @@ function calculateStudent(student, assignments, categories, config) {
   const availableRequiredPoints = availableRequired.reduce((sum, assignment) => sum + assignment.maxPoints, 0);
   const evidenceCoverage = expectedRequired.length ? availableRequired.length / expectedRequired.length : 0;
   const evidencePointsCoverage = expectedRequiredPoints ? availableRequiredPoints / expectedRequiredPoints : 0;
-  const trend = calculateTrend(student, classAssignments);
+  const trend = calculateTrend(student, classAssignments.filter((assignment) => assignment.useInTrend));
   const dwExamGap = calculateDwExamGap(categoryRows);
   const importedFinal = getImportedFinal(student);
   const flags = calculateFlags({
@@ -198,7 +213,7 @@ function calculateStudent(student, assignments, categories, config) {
 }
 
 function calculateCategory(student, assignments, category) {
-  const categoryAssignments = assignments.filter((assignment) => assignment.category === category.name && assignment.required);
+  const categoryAssignments = assignments.filter((assignment) => assignment.countsForTotal && assignment.category === category.name && assignment.required);
   let earned = 0;
   let expectedPossible = 0;
   let availablePossible = 0;
@@ -243,22 +258,56 @@ function calculateCategory(student, assignments, category) {
 }
 
 function applyAvailableEvidenceWeights(categoryRows) {
+  const transferredWeights = transferableExamWeights(categoryRows);
   const availableWeightTotal = categoryRows.reduce((sum, row) => {
-    return sum + (row.hasAvailableEvidence ? row.normalisedWeight : 0);
+    if (!row.hasAvailableEvidence || !Number.isFinite(row.rawPercentage)) return sum;
+    return sum + row.normalisedWeight + (transferredWeights.get(row.category) || 0);
   }, 0);
 
   return categoryRows.map((row) => {
     if (!row.hasAvailableEvidence || !availableWeightTotal || !Number.isFinite(row.rawPercentage)) {
-      return { ...row, effectiveWeight: 0, weightedContribution: null };
+      return { ...row, effectiveWeight: 0, weightedContribution: null, transferredWeight: 0 };
     }
 
-    const effectiveWeight = row.normalisedWeight / availableWeightTotal;
+    const transferredWeight = transferredWeights.get(row.category) || 0;
+    const effectiveWeight = (row.normalisedWeight + transferredWeight) / availableWeightTotal;
     return {
       ...row,
       effectiveWeight,
+      transferredWeight,
       weightedContribution: round(row.rawPercentage * effectiveWeight),
     };
   });
+}
+
+function transferableExamWeights(categoryRows) {
+  const transfers = new Map();
+
+  for (const sourceRow of categoryRows) {
+    if (sourceRow.hasAvailableEvidence || sourceRow.normalisedWeight <= 0) continue;
+    const source = basketSegment(sourceRow.category);
+    if (!source || source.type !== "EX") continue;
+
+    const targetRow = categoryRows.find((candidate) => {
+      const target = basketSegment(candidate.category);
+      return target
+        && target.type === "DW"
+        && target.segment === source.segment
+        && candidate.hasAvailableEvidence
+        && Number.isFinite(candidate.rawPercentage);
+    });
+
+    if (targetRow) {
+      transfers.set(targetRow.category, (transfers.get(targetRow.category) || 0) + sourceRow.normalisedWeight);
+    }
+  }
+
+  return transfers;
+}
+
+function basketSegment(category) {
+  const match = String(category || "").trim().toUpperCase().replace(/\s+/g, "").match(/^(DW|EX)(\d+)$/);
+  return match ? { type: match[1], segment: match[2] } : null;
 }
 
 function calculateTrend(student, assignments) {
@@ -267,11 +316,14 @@ function calculateTrend(student, assignments) {
       const score = student.scores.get(assignment.id);
       if (!score || score.status !== "available" || !Number.isFinite(score.value) || assignment.maxPoints <= 0) return null;
       return {
+        assignmentId: assignment.id,
         index,
         date: assignment.date || "",
         title: assignment.title || "",
         category: assignment.category || "",
         sheetName: assignment.sheetName || "",
+        usage: assignment.usage || "include",
+        countsForTotal: Boolean(assignment.countsForTotal),
         earned: score.value,
         maxPoints: assignment.maxPoints,
         label: periodLabel(assignment, index),
@@ -312,7 +364,7 @@ function calculateTrend(student, assignments) {
 function periodLabel(assignment, index) {
   const text = `${assignment.sheetName || ""} ${assignment.title || ""} ${assignment.date || ""}`.toLowerCase();
   const category = String(assignment.category || "").toUpperCase();
-  if (/par|paas|partial|partieel/.test(text)) return "PAR EX";
+  if (/par|paas|partial|partieel/.test(text)) return "EXPAR";
   if (category === "EX" && /(kerst|sem\s*1|semester\s*1|\b1\b)/i.test(text)) return "EX1";
   if (category === "EX" && /(eind|juni|sem\s*2|semester\s*2|\b2\b)/i.test(text)) return "EX2";
   if (category === "EX") return "EX";
