@@ -4,7 +4,6 @@ import { cp } from "node:fs/promises";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
-  base: "/skore_analyser/",
   plugins: [
     react(),
     {

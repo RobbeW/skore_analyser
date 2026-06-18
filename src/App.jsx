@@ -13,6 +13,9 @@ import {
   ShieldCheck,
   Sparkles,
   UploadCloud,
+  Minimize2,
+  Maximize2,
+  ArrowRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -75,6 +78,30 @@ const DEFAULT_BASKET_PRESET = "grade2_iw";
 const LOW_EVIDENCE_POINTS_COVERAGE = 0.6;
 const LOW_EVIDENCE_CLASS_GAP = 0.25;
 const ASSIGNMENT_USAGE_OPTIONS = ["include", "displayOnly", "exclude"];
+const SCHOOL_YEAR_MONTHS = [
+  { month: 8, labelKey: "month.sep" },
+  { month: 9, labelKey: "month.oct" },
+  { month: 10, labelKey: "month.nov" },
+  { month: 11, labelKey: "month.dec" },
+  { month: 0, labelKey: "month.jan" },
+  { month: 1, labelKey: "month.feb" },
+  { month: 2, labelKey: "month.mar" },
+  { month: 3, labelKey: "month.apr" },
+  { month: 4, labelKey: "month.may" },
+  { month: 5, labelKey: "month.jun" },
+];
+const SCHOOL_YEAR_DOMAIN_END = SCHOOL_YEAR_MONTHS.length;
+const GENERATION_STEPS = [
+  { key: "file", titleKey: "generation.fileTitle", bodyKey: "generation.fileBody" },
+  { key: "weights", titleKey: "generation.weightsTitle", bodyKey: "generation.weightsBody" },
+  { key: "cards", titleKey: "generation.cardsTitle", bodyKey: "generation.cardsBody" },
+];
+const DEFAULT_OPEN_CARD_SECTIONS = {
+  duiding: false,
+  signals: false,
+  score: false,
+  comments: false,
+};
 
 const CARD_TOUR_STEPS = [
   { part: "total", titleKey: "tour.totalTitle", bodyKey: "tour.totalBody" },
@@ -173,9 +200,11 @@ export default function App() {
   const [uploadSummary, setUploadSummary] = useState(null);
   const [projectSaveState, setProjectSaveState] = useState("idle");
   const [noteSaveStatus, setNoteSaveStatus] = useState({});
+  const [generationStep, setGenerationStep] = useState(0);
   const fileInputRef = useRef(null);
   const projectInputRef = useRef(null);
   const noteSaveTimersRef = useRef(new Map());
+  const generationTimersRef = useRef([]);
 
   const c = (key, params = {}) => {
     const value = FALLBACK_COPY[language]?.[key] || FALLBACK_COPY.nl[key] || key;
@@ -197,6 +226,11 @@ export default function App() {
     const clearPrintTarget = () => setPrintStudentId(null);
     window.addEventListener("afterprint", clearPrintTarget);
     return () => window.removeEventListener("afterprint", clearPrintTarget);
+  }, []);
+
+  useEffect(() => () => {
+    generationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    noteSaveTimersRef.current.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
   useEffect(() => {
@@ -223,6 +257,17 @@ export default function App() {
     if (patch.language) setLanguageState(patch.language);
   }
 
+  function persistLastBasketPreset(presetName) {
+    if (!presetName || !config) return;
+    const subjectKey = preferenceSubjectKey(config.subject || model?.subjects?.[0]?.value || "subject");
+    persistPreferences({
+      lastBasketPresetBySubject: {
+        ...(preferences.lastBasketPresetBySubject || {}),
+        [subjectKey]: presetName,
+      },
+    });
+  }
+
   function markProjectDirty() {
     if (model && config) setProjectSaveState("dirty");
   }
@@ -234,12 +279,12 @@ export default function App() {
     try {
       const workbook = await readXlsxWorkbook(source, { fileName });
       const parsedModel = parseSkoreWorkbook(workbook);
-      const nextConfig = createInitialConfig(parsedModel);
+      const nextConfig = createInitialConfig(parsedModel, preferences);
       const nextWorkspaceKey = `${parsedModel.fileName}::${nextConfig.subject || "subject"}`.toLowerCase();
       setModel(parsedModel);
       setConfig(nextConfig);
       setAnalysis(null);
-      setFilters(normaliseFilters({}, nextConfig.threshold));
+      setFilters(normaliseFilters({ classCode: preferredClassCode(parsedModel, preferences) }, nextConfig.threshold));
       setNotes(loadNotes(nextWorkspaceKey));
       setProjectSaveState("dirty");
       setUploadSummary({
@@ -299,28 +344,39 @@ export default function App() {
 
   function generateCards() {
     if (!model || !config) return;
+    generationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    generationTimersRef.current = [];
     setIsBusy(true);
+    setGenerationStep(0);
     setStatus({ kind: "busy", text: t("mapping.generating") });
-    window.setTimeout(() => {
-      const nextAnalysis = calculateAnalysis(model, config);
-      setAnalysis(nextAnalysis);
-      setFilters((current) => normaliseFilters(current, config.threshold));
-      setStatus({
-        kind: "success",
-        text: t("status.loaded", {
-          fileName: model.fileName,
-          students: model.students.length,
-          assignments: nextAnalysis.assignments.length,
-          classes: nextAnalysis.classes.length,
-        }),
-      });
-      setIsBusy(false);
-      setWorkflowStep("dashboard");
-    }, 240);
+    setWorkflowStep("generating");
+
+    const nextAnalysis = calculateAnalysis(model, config);
+    generationTimersRef.current = [
+      window.setTimeout(() => setGenerationStep(1), 520),
+      window.setTimeout(() => setGenerationStep(2), 1040),
+      window.setTimeout(() => {
+        setAnalysis(nextAnalysis);
+        setFilters((current) => normaliseFilters(current, config.threshold));
+        setStatus({
+          kind: "success",
+          text: t("status.loaded", {
+            fileName: model.fileName,
+            students: model.students.length,
+            assignments: nextAnalysis.assignments.length,
+            classes: nextAnalysis.classes.length,
+          }),
+        });
+        setIsBusy(false);
+        setWorkflowStep("dashboard");
+      }, 1620),
+    ];
   }
 
   function resetData() {
     if (!window.confirm(c("resetConfirm"))) return;
+    generationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    generationTimersRef.current = [];
     setModel(null);
     setConfig(null);
     setAnalysis(null);
@@ -352,6 +408,7 @@ export default function App() {
       },
     }));
     markProjectDirty();
+    persistLastBasketPreset(presetName);
   }
 
   function updateBasketWeight(name, weight) {
@@ -401,6 +458,9 @@ export default function App() {
 
   function updateFilters(patch) {
     setFilters((current) => ({ ...current, ...patch }));
+    if (Object.prototype.hasOwnProperty.call(patch, "classCode")) {
+      persistPreferences({ lastClassCode: patch.classCode || "all" });
+    }
     markProjectDirty();
   }
 
@@ -446,6 +506,30 @@ export default function App() {
 
   function printStudentCard(studentId) {
     setPrintStudentId(studentId);
+  }
+
+  const compactCards = preferences.compactCards !== false;
+  const openCardSections = {
+    ...DEFAULT_OPEN_CARD_SECTIONS,
+    ...(preferences.openCardSections || {}),
+  };
+
+  function updateCardSectionPreference(section, isOpen) {
+    persistPreferences({
+      openCardSections: {
+        ...openCardSections,
+        [section]: Boolean(isOpen),
+      },
+    });
+  }
+
+  function closeTour(completed = false) {
+    setActiveTour(null);
+    if (completed) {
+      persistPreferences({
+        tourCompletedAt: new Date().toISOString(),
+      });
+    }
   }
 
   const shellClass = cn("app-shell", workflowStep === "upload" && "app-shell--splash", printStudentId && "is-printing-single");
@@ -507,6 +591,10 @@ export default function App() {
             />
           ) : null}
 
+          {workflowStep === "generating" && model && config ? (
+            <GenerationScreen c={c} model={model} config={config} generationStep={generationStep} />
+          ) : null}
+
           {workflowStep === "dashboard" && analysis ? (
             <DashboardScreen
               c={c}
@@ -514,8 +602,12 @@ export default function App() {
               filters={filters}
               filteredStudents={filteredStudents}
               anonymised={Boolean(preferences.anonymised)}
+              compactCards={compactCards}
+              openCardSections={openCardSections}
               notes={notes}
               noteSaveStatus={noteSaveStatus}
+              onCompactCardsChange={(value) => persistPreferences({ compactCards: value })}
+              onCardSectionOpenChange={updateCardSectionPreference}
               onFiltersChange={updateFilters}
               onNoteChange={updateNote}
               onScrollToStudent={scrollToStudent}
@@ -537,7 +629,8 @@ export default function App() {
           c={c}
           activeTour={activeTour}
           onChange={setActiveTour}
-          onClose={() => setActiveTour(null)}
+          onClose={() => closeTour(false)}
+          onComplete={() => closeTour(true)}
         />
 
         <EvaluationDialog
@@ -991,14 +1084,51 @@ function MappingScreen({
   );
 }
 
+function GenerationScreen({ c, model, config, generationStep }) {
+  return (
+    <section className="workflow-screen generation-screen">
+      <FlowIndicator active="dashboard" c={c} />
+      <div className="generation-shell">
+        <div className="generation-copy">
+          <p className="eyebrow">{t("generation.eyebrow")}</p>
+          <h2>{t("generation.title")}</h2>
+          <p>{t("generation.body", {
+            students: model.students.length,
+            subject: config.subject || model.subjects?.[0]?.value || t("dashboard.fallbackTitle"),
+          })}</p>
+        </div>
+        <div className="generation-steps" aria-live="polite">
+          {GENERATION_STEPS.map((step, index) => {
+            const isComplete = index < generationStep;
+            const isActive = index === generationStep;
+            return (
+              <div key={step.key} className={cn("generation-step", isComplete && "is-complete", isActive && "is-active")}>
+                <span>{isComplete ? "OK" : index + 1}</span>
+                <div>
+                  <strong>{t(step.titleKey)}</strong>
+                  <p>{t(step.bodyKey)}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DashboardScreen({
   c,
   analysis,
   filters,
   filteredStudents,
   anonymised,
+  compactCards,
+  openCardSections,
   notes,
   noteSaveStatus,
+  onCompactCardsChange,
+  onCardSectionOpenChange,
   onFiltersChange,
   onNoteChange,
   onScrollToStudent,
@@ -1044,8 +1174,6 @@ function DashboardScreen({
         <div className="stats-grid">
           <StatCard label={t("detected.students")} value={stats.count} />
           <StatCard label={t("dashboard.classAverage")} value={`${formatNumber(stats.mean)}%`} />
-          <StatCard label={t("dashboard.median")} value={`${formatNumber(stats.median)}%`} />
-          <StatCard label={t("dashboard.stddev")} value={formatNumber(stats.stddev)} />
           <StatCard label={t("dashboard.below", { threshold: filters.threshold ?? 50 })} value={stats.belowThreshold} />
           <StatCard label={t("dashboard.incomplete")} value={stats.incomplete} />
         </div>
@@ -1097,21 +1225,30 @@ function DashboardScreen({
       </div>
 
       <div className="cards-heading">
-        <h3>{t("student.cardsTitle")}</h3>
-        <span>{filteredStudents.length} {t("detected.students").toLowerCase()}</span>
+        <div>
+          <h3>{t("student.cardsTitle")}</h3>
+          <span>{filteredStudents.length} {t("detected.students").toLowerCase()}</span>
+        </div>
+        <Button variant="outline" size="sm" type="button" onClick={() => onCompactCardsChange(!compactCards)}>
+          {compactCards ? <Maximize2 size={15} aria-hidden="true" /> : <Minimize2 size={15} aria-hidden="true" />}
+          {compactCards ? t("dashboard.roomyCards") : t("dashboard.compactCards")}
+        </Button>
       </div>
 
-      <div className="student-cards">
+      <div className={cn("student-cards", compactCards && "student-cards--compact")}>
         {filteredStudents.length ? filteredStudents.map((student, index) => (
           <StudentCard
             key={student.id}
             student={student}
             peers={peerGroups.get(student.classCode) || filteredStudents}
             anonymised={anonymised}
+            compact={compactCards}
+            openSections={openCardSections}
             displayIndex={index}
             note={notes[student.id] || ""}
             noteStatus={noteSaveStatus[student.id] || "idle"}
             onNoteChange={onNoteChange}
+            onSectionOpenChange={onCardSectionOpenChange}
             onScrollToStudent={onScrollToStudent}
             onStartTour={onStartTour}
             onPrintStudent={onPrintStudent}
@@ -1425,7 +1562,6 @@ function StudentTable({ students, anonymised, filters, onFiltersChange, onOpen }
           <SortHeader field="class" label={t("student.class")} filters={filters} onFiltersChange={onFiltersChange} />
           <SortHeader field="total" label={t("student.total")} filters={filters} onFiltersChange={onFiltersChange} align="right" />
           <SortHeader field="coverage" label={t("student.coverage")} filters={filters} onFiltersChange={onFiltersChange} align="right" className="student-table-coverage" />
-          <SortHeader field="flags" label={t("student.flagsShort")} filters={filters} onFiltersChange={onFiltersChange} align="right" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -1442,11 +1578,15 @@ function StudentTable({ students, anonymised, filters, onFiltersChange, onOpen }
               }
             }}
           >
-            <TableCell>{anonymised ? t("student.anonymous", { number: String(index + 1).padStart(2, "0") }) : student.name}</TableCell>
+            <TableCell>
+              <span className="student-table-name">
+                <span>{anonymised ? t("student.anonymous", { number: String(index + 1).padStart(2, "0") }) : student.name}</span>
+                <ArrowRight size={15} aria-hidden="true" />
+              </span>
+            </TableCell>
             <TableCell>{student.classCode}</TableCell>
             <TableCell className="table-cell-numeric">{formatGrade(student.finalWeighted)}</TableCell>
             <TableCell className="table-cell-numeric student-table-coverage">{formatPercent(student.evidenceCoverage)}</TableCell>
-            <TableCell className="table-cell-numeric">{student.flags.length}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -1472,10 +1612,13 @@ function StudentCard({
   student,
   peers,
   anonymised,
+  compact,
+  openSections,
   displayIndex,
   note,
   noteStatus,
   onNoteChange,
+  onSectionOpenChange,
   onScrollToStudent,
   onStartTour,
   onPrintStudent,
@@ -1487,9 +1630,13 @@ function StudentCard({
   const peerIndex = peers.findIndex((peer) => peer.id === student.id);
   const previousPeer = peerIndex > 0 ? peers[peerIndex - 1] : null;
   const nextPeer = peerIndex >= 0 && peerIndex < peers.length - 1 ? peers[peerIndex + 1] : null;
+  const sectionOpen = {
+    ...DEFAULT_OPEN_CARD_SECTIONS,
+    ...(openSections || {}),
+  };
 
   return (
-    <Card className={cn("student-card", isPrintTarget && "is-print-target")} id={`student-card-${student.id}`} data-student-id={student.id}>
+    <Card className={cn("student-card", compact && "student-card--compact", isPrintTarget && "is-print-target")} id={`student-card-${student.id}`} data-student-id={student.id}>
       <CardHeader className="student-card-header" data-tour-part="total">
         <div>
           <CardTitle className="student-title">{displayName}</CardTitle>
@@ -1534,27 +1681,87 @@ function StudentCard({
       </CardHeader>
 
       <CardContent>
-        <div className="card-grid score-visual-grid">
-          <section className="card-section" data-tour-part="graph">
-            <div className="section-row graph-section-heading">
-              <h4>{t("student.visualContext")}</h4>
-              <span>{t("chart.clickDots")}</span>
+        <section className="card-section card-section--graph" data-tour-part="graph">
+          <div className="section-row graph-section-heading">
+            <h4>{t("student.visualContext")}</h4>
+            <span>{t("chart.clickDots")}</span>
+          </div>
+          <YearTrend trend={student.trend} student={student} onEvaluationClick={onEvaluationClick} />
+          <Accordion
+            type="single"
+            collapsible
+            className="duiding-accordion"
+            value={sectionOpen.duiding ? "duiding" : ""}
+            onValueChange={(value) => onSectionOpenChange?.("duiding", value === "duiding")}
+          >
+            <AccordionItem value="duiding">
+              <AccordionTrigger>{t("chart.interpretationTitle")}</AccordionTrigger>
+              <AccordionContent>
+                <GraphInterpretation trend={student.trend} embedded />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+          <div className="peer-chart-grid">
+            <div className="peer-chart-stack">
+              <DotPlot students={peers} selected={student} anonymised={anonymised} />
+              <QuartileStrip students={peers} selected={student} />
             </div>
-            <YearTrend trend={student.trend} student={student} onEvaluationClick={onEvaluationClick} />
-            <GraphInterpretation trend={student.trend} />
-            <div className="peer-chart-grid">
-              <div className="peer-chart-stack">
-                <DotPlot students={peers} selected={student} anonymised={anonymised} />
-                <QuartileStrip students={peers} selected={student} />
-              </div>
-              <MiniHistogram students={peers} selected={student} anonymised={anonymised} onBinClick={onHistogramClick} />
-            </div>
-          </section>
+            <MiniHistogram students={peers} selected={student} anonymised={anonymised} onBinClick={onHistogramClick} />
+          </div>
+        </section>
 
+        <section className="card-section card-section--summary" data-tour-part="advice">
+          <PedagogicalSummary student={student} />
+          {student.flags.length ? (
+            <Accordion
+              type="single"
+              collapsible
+              className="flag-accordion compact-flag-accordion"
+              value={sectionOpen.signals ? "flags" : ""}
+              onValueChange={(value) => onSectionOpenChange?.("signals", value === "flags")}
+            >
+              <AccordionItem value="flags">
+                <AccordionTrigger>{t("student.signalDetails")}</AccordionTrigger>
+                <AccordionContent>
+                  {student.flags.map((flag, index) => (
+                    <div className="flag-detail-row" key={`${flag.type}-${index}`}>
+                      <Badge variant={flag.tone === "danger" ? "destructive" : flag.tone === "warning" ? "warning" : "secondary"}>
+                        {flag.label}
+                      </Badge>
+                      <p>{flag.detail}</p>
+                    </div>
+                  ))}
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          ) : null}
+        </section>
+
+        <section className="card-section notes-section" data-tour-part="notes">
+          <div className="section-row notes-heading">
+            <h4>{t("student.teacherJudgement")}</h4>
+            <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
+              {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
+            </span>
+          </div>
+          <Textarea
+            value={note}
+            onChange={(event) => onNoteChange(student.id, event.target.value)}
+            placeholder={t("student.teacherPlaceholder")}
+          />
+        </section>
+
+        <div className="card-grid compact-detail-grid">
           <section className="card-section compact-detail-section" data-tour-part="table">
-            <Accordion type="single" collapsible className="score-detail-accordion">
+            <Accordion
+              type="single"
+              collapsible
+              className="score-detail-accordion"
+              value={sectionOpen.score ? "score" : ""}
+              onValueChange={(value) => onSectionOpenChange?.("score", value === "score")}
+            >
               <AccordionItem value="score">
-                <AccordionTrigger>{t("student.summary")}</AccordionTrigger>
+                <AccordionTrigger>{t("student.calculationDetails")}</AccordionTrigger>
                 <AccordionContent>
                   <ScoreTable rows={student.categoryRows} />
                   <div className="calculation-note">
@@ -1564,38 +1771,24 @@ function StudentCard({
                       coverage: formatPercent(student.evidenceCoverage),
                     })}</p>
                     <p>{t("student.traceBody")}</p>
+                    <p>{t(`student.finalSource.${student.finalSource || "missing"}`)}</p>
+                    {student.finalSource === "imported" && Number.isFinite(student.calculatedWeighted) ? (
+                      <p>{t("student.calculatedFinal")}: {formatGrade(student.calculatedWeighted)}</p>
+                    ) : null}
                     <p>{t("student.importedFinal")}: {student.importedFinal ? `${student.importedFinal.source} ${student.importedFinal.field} = ${formatNumber(student.importedFinal.value)}%` : t("student.noImportedFinal")}</p>
                   </div>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
           </section>
-        </div>
-
-        <div className="card-grid support-grid">
-          <section className="card-section" data-tour-part="advice">
-            <h4>{t("student.flags")}</h4>
-            <PedagogicalSummary student={student} />
-            {student.flags.length ? (
-              <Accordion type="multiple" className="flag-accordion">
-                {student.flags.map((flag, index) => (
-                  <AccordionItem key={`${flag.type}-${index}`} value={`${flag.type}-${index}`}>
-                    <AccordionTrigger>
-                      <Badge variant={flag.tone === "danger" ? "destructive" : flag.tone === "warning" ? "warning" : "secondary"}>
-                        {flag.label}
-                      </Badge>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <p>{flag.detail}</p>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            ) : null}
-          </section>
 
           <section className="card-section print-optional compact-detail-section">
-            <Accordion type="single" collapsible>
+            <Accordion
+              type="single"
+              collapsible
+              value={sectionOpen.comments ? "comments" : ""}
+              onValueChange={(value) => onSectionOpenChange?.("comments", value === "comments")}
+            >
               <AccordionItem value="comments">
                 <AccordionTrigger>{t("student.comments")}</AccordionTrigger>
                 <AccordionContent>
@@ -1614,20 +1807,6 @@ function StudentCard({
             </Accordion>
           </section>
         </div>
-
-        <section className="card-section notes-section" data-tour-part="notes">
-          <div className="section-row notes-heading">
-            <h4>{t("student.teacherJudgement")}</h4>
-            <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
-              {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
-            </span>
-          </div>
-          <Textarea
-            value={note}
-            onChange={(event) => onNoteChange(student.id, event.target.value)}
-            placeholder={t("student.teacherPlaceholder")}
-          />
-        </section>
       </CardContent>
     </Card>
   );
@@ -1688,11 +1867,15 @@ function ScoreTable({ rows }) {
   );
 }
 
-function GraphInterpretation({ trend }) {
+function GraphInterpretation({ trend, embedded = false }) {
   return (
-    <div className="graph-interpretation-panel">
-      <h4>{t("chart.interpretationTitle")}</h4>
+    <div className={cn("graph-interpretation-panel", embedded && "is-embedded")}>
+      {embedded ? null : <h4>{t("chart.interpretationTitle")}</h4>}
       <dl>
+        <div>
+          <dt>{t("chart.monthAxisLabel")}</dt>
+          <dd>{t("chart.monthAxisHelp")}</dd>
+        </div>
         <div>
           <dt>{t("chart.solidLineLabel")}</dt>
           <dd>{t("chart.solidLineHelp")}</dd>
@@ -1737,13 +1920,11 @@ function YearTrend({ trend, student, onEvaluationClick }) {
   const bottom = 164;
   const axisWidth = width - left - 28;
   const axisHeight = bottom - top;
-  const xFor = (index) => left + (points.length === 1 ? axisWidth / 2 : (index / (points.length - 1)) * axisWidth);
+  const positionedPoints = positionTrendPoints(points);
+  const xFor = (value) => left + (clamp(value, 0, SCHOOL_YEAR_DOMAIN_END) / SCHOOL_YEAR_DOMAIN_END) * axisWidth;
   const yFor = (value) => bottom - (clamp(value, 0, 100) / 100) * axisHeight;
-  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(index)} ${yFor(point.value)}`).join(" ");
-  const trendLine = linearTrendLine(points.map((point) => point.value));
-  const labels = groupedAxisLabels(points);
-  const periodLines = periodBoundaryLines(labels);
-  const periodSpans = periodSpansFromAxisLabels(labels);
+  const linePath = positionedPoints.map(({ point, x }, index) => `${index === 0 ? "M" : "L"} ${xFor(x)} ${yFor(point.value)}`).join(" ");
+  const trendLine = linearTrendLineForPoints(positionedPoints);
 
   return (
     <figure className="year-chart">
@@ -1756,31 +1937,26 @@ function YearTrend({ trend, student, onEvaluationClick }) {
             <text x="10" y={yFor(value) + 4}>{value}%</text>
           </g>
         ))}
-        {periodLines.map((line) => (
-          <line key={`period-line-${line.index}`} className="year-period-marker" x1={xFor(line.index)} y1={top} x2={xFor(line.index)} y2={bottom} />
-        ))}
-        {periodSpans.map((span) => (
-          <text key={`period-span-${span.period}-${span.startIndex}`} className="year-period-label" x={xFor(span.centerIndex)} y={top - 7} textAnchor="middle">
-            {t("chart.periodGroup", { period: span.period })}
-          </text>
+        {SCHOOL_YEAR_MONTHS.slice(1).map((month, index) => (
+          <line key={`month-line-${month.labelKey}`} className="year-month-marker" x1={xFor(index + 1)} y1={top} x2={xFor(index + 1)} y2={bottom} />
         ))}
         <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" />
         {trendLine ? (
           <line
             className="year-trend-direction"
-            x1={xFor(0)}
+            x1={xFor(trendLine.startX)}
             y1={yFor(trendLine.start)}
-            x2={xFor(points.length - 1)}
+            x2={xFor(trendLine.endX)}
             y2={yFor(trendLine.end)}
           />
         ) : null}
-        {points.map((point, index) => (
+        {positionedPoints.map(({ point, x }, index) => (
           <g
             key={`${point.assignmentId || point.label}-${index}`}
             className={cn("trend-dot", isExamPoint(point) && "is-exam-point", point.usage === "displayOnly" && "is-context-point")}
             role="button"
             tabIndex={0}
-            transform={`translate(${xFor(index)}, ${yFor(point.value)})`}
+            transform={`translate(${xFor(x)}, ${yFor(point.value)})`}
             onClick={() => onEvaluationClick?.({ student, point })}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -1790,13 +1966,16 @@ function YearTrend({ trend, student, onEvaluationClick }) {
             }}
             aria-label={`${t("chart.evaluation")}: ${point.label}, ${formatNumber(point.value)}%`}
           >
-            <title>{`${point.label}: ${formatNumber(point.value)}%${point.usage === "displayOnly" ? ` - ${t("usage.displayOnlyHelp")}` : ""}`}</title>
-            <text className="trend-dot-label" x="0" y="-15" textAnchor="middle">{formatNumber(point.value)}%</text>
+            <text className="trend-dot-label chart-svg-tooltip" x="0" y="-15" textAnchor="middle">
+              {shortLabel(`${point.label} - ${formatNumber(point.value)}%`, 34)}
+            </text>
             <circle cx="0" cy="0" r="7" />
           </g>
         ))}
-        {labels.map((label) => (
-          <text key={`${label.text}-${label.startIndex}`} className="axis-label" x={xFor(label.centerIndex)} y={bottom + 30} textAnchor="middle">{label.text}</text>
+        {SCHOOL_YEAR_MONTHS.map((month, index) => (
+          <text key={month.labelKey} className="axis-label month-axis-label" x={xFor(index + 0.5)} y={bottom + 30} textAnchor="middle">
+            {t(month.labelKey)}
+          </text>
         ))}
       </svg>
     </figure>
@@ -1840,7 +2019,6 @@ function DotPlot({ students, selected, anonymised }) {
             onFocus={() => setHoveredId(student.id)}
             onBlur={() => setHoveredId(null)}
           >
-            <title>{`${label}: ${formatGrade(student.finalWeighted)}`}</title>
             <text className={cn("peer-dot-label", isHovered && "is-visible")} x={labelX} y="-14" textAnchor={anchor}>{shortLabel(label, 24)} - {formatGrade(student.finalWeighted)}</text>
             <circle className="peer-dot-hit" cx="0" cy="0" r="13" />
             <circle className="peer-dot-circle" cx="0" cy="0" r={active ? 7 : 4} />
@@ -1973,6 +2151,9 @@ function Histogram({ students, selected, compact = false, anonymised = false, on
           >
             <rect x={x} y={y} width={barWidth} height={barHeight} rx="6" fill={bandColor(band.id)} />
             <text x={x + barWidth / 2} y={y - 8} textAnchor="middle">{counts[index]}</text>
+            <text className="histogram-bin-tooltip chart-svg-tooltip" x={x + barWidth / 2} y={Math.max(14, y - 24)} textAnchor="middle">
+              {histogramTooltipLabel(bin[2], studentsInBin, anonymised)}
+            </text>
             <text x={x + barWidth / 2} y={bottom + 22} textAnchor="middle">{bin[2]}</text>
           </g>
         );
@@ -1980,8 +2161,8 @@ function Histogram({ students, selected, compact = false, anonymised = false, on
       {selectedMarker ? (
         <g className="histogram-selected-marker" transform={`translate(${selectedMarker.x}, ${selectedMarker.y})`}>
           <g className="histogram-selected-arrow">
-            <title>{t("chart.selectedStudent")}: {formatGrade(selected.finalWeighted)}</title>
             <path d="M 0 18 L -9 4 L -3 4 L -3 -8 L 3 -8 L 3 4 L 9 4 Z" />
+            <text className="histogram-selected-label chart-svg-tooltip" x="0" y="-15" textAnchor="middle">{formatGrade(selected.finalWeighted)}</text>
           </g>
         </g>
       ) : null}
@@ -1989,7 +2170,7 @@ function Histogram({ students, selected, compact = false, anonymised = false, on
   );
 }
 
-function StudentTourOverlay({ c, activeTour, onChange, onClose }) {
+function StudentTourOverlay({ c, activeTour, onChange, onClose, onComplete }) {
   const [rect, setRect] = useState(null);
   const step = activeTour ? CARD_TOUR_STEPS[activeTour.step] : null;
 
@@ -2040,6 +2221,14 @@ function StudentTourOverlay({ c, activeTour, onChange, onClose }) {
   const panelTop = rect.top + rect.height + 18 < window.innerHeight - 170
     ? rect.top + rect.height + 18
     : Math.max(18, rect.top - 170);
+  const focusCenter = {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+  const panelCenter = {
+    x: panelLeft + 160,
+    y: panelTop + 78,
+  };
 
   return (
     <div className="tour-layer" role="dialog" aria-modal="true" aria-labelledby="tour-title">
@@ -2053,13 +2242,18 @@ function StudentTourOverlay({ c, activeTour, onChange, onClose }) {
           height: rect.height + 12,
         }}
       />
+      <svg className="tour-connector" aria-hidden="true">
+        <line x1={focusCenter.x} y1={focusCenter.y} x2={panelCenter.x} y2={panelCenter.y} />
+      </svg>
       <div className="tour-panel" style={{ top: panelTop, left: panelLeft }}>
-        <div className="tour-panel-meta">
-          <p className="eyebrow">{t("tour.title", { student: "" }).replace(":", "").trim()}</p>
-          <span>{t("tour.stepProgress", { current: activeTour.step + 1, total: CARD_TOUR_STEPS.length })}</span>
+        <div className="tour-panel-body" key={step.part}>
+          <div className="tour-panel-meta">
+            <p className="eyebrow">{t("tour.title", { student: "" }).replace(":", "").trim()}</p>
+            <span>{t("tour.stepProgress", { current: activeTour.step + 1, total: CARD_TOUR_STEPS.length })}</span>
+          </div>
+          <h3 id="tour-title">{t(step.titleKey)}</h3>
+          <p>{t(step.bodyKey)}</p>
         </div>
-        <h3 id="tour-title">{t(step.titleKey)}</h3>
-        <p>{t(step.bodyKey)}</p>
         <div className="tour-actions">
           <Button variant="ghost" type="button" onClick={onClose}>{c("closeTour")}</Button>
           <Button
@@ -2073,7 +2267,7 @@ function StudentTourOverlay({ c, activeTour, onChange, onClose }) {
           <Button
             type="button"
             onClick={() => {
-              if (isLast) onClose();
+              if (isLast) onComplete?.();
               else onChange({ ...activeTour, step: activeTour.step + 1 });
             }}
           >
@@ -2181,9 +2375,11 @@ function Footer() {
   );
 }
 
-function createInitialConfig(model) {
+function createInitialConfig(model, preferences = {}) {
   const base = buildDefaultConfig(model);
-  const basketPreset = suggestBasketPreset(model);
+  const subjectKey = preferenceSubjectKey(base.subject || model.subjects?.[0]?.value || "subject");
+  const preferredPreset = preferences.lastBasketPresetBySubject?.[subjectKey];
+  const basketPreset = BASKET_PRESETS[preferredPreset] ? preferredPreset : suggestBasketPreset(model);
   const preset = BASKET_PRESETS[basketPreset] || BASKET_PRESETS[DEFAULT_BASKET_PRESET];
   return {
     ...base,
@@ -2201,6 +2397,17 @@ function createInitialConfig(model) {
       },
     ])),
   };
+}
+
+function preferenceSubjectKey(value) {
+  return String(value || "subject").trim().toLowerCase() || "subject";
+}
+
+function preferredClassCode(model, preferences = {}) {
+  const preferred = preferences.lastClassCode;
+  if (!preferred || preferred === "all") return "all";
+  const classes = new Set((model.classes || []).map((entry) => entry.value));
+  return classes.has(preferred) ? preferred : "all";
 }
 
 function assignmentUsage(override = {}) {
@@ -2512,6 +2719,16 @@ function shortLabel(value, maxLength = 24) {
   return `${text.slice(0, Math.max(1, maxLength - 1)).trim()}…`;
 }
 
+function histogramTooltipLabel(label, studentsInBin = [], anonymised = false) {
+  if (!studentsInBin.length) return `${label}: 0`;
+  const names = studentsInBin.slice(0, 2).map((student, index) => (
+    anonymised ? t("student.anonymous", { number: String(index + 1).padStart(2, "0") }) : student.name
+  ));
+  const rest = studentsInBin.length > names.length ? ` +${studentsInBin.length - names.length}` : "";
+  const text = `${label}: ${names.join(", ")}${rest}`;
+  return text.length <= 44 ? text : `${text.slice(0, 41).trim()}...`;
+}
+
 function quantile(values, q) {
   if (!values.length) return 0;
   const position = (values.length - 1) * q;
@@ -2539,91 +2756,164 @@ function bandColor(id) {
   }[id] || "#cbd5e1";
 }
 
-function linearTrendLine(values) {
-  const clean = values.map((value) => Number(value)).filter(Number.isFinite);
+function positionTrendPoints(points) {
+  return points.map((point, index) => ({
+    point,
+    x: trendPointX(point, index, points.length),
+  }));
+}
+
+function trendPointX(point, index, total) {
+  const parsed = parseSchoolDate(point?.date);
+  const slot = parsed ? schoolMonthSlot(parsed.month) : null;
+  if (slot != null) {
+    const days = daysInMonth(parsed.year, parsed.month);
+    const dayFraction = days ? clamp(((parsed.day || 15) - 1) / days, 0.08, 0.92) : 0.5;
+    return slot + dayFraction;
+  }
+  if (total < 2) return SCHOOL_YEAR_DOMAIN_END / 2;
+  return 0.5 + (index / (total - 1)) * (SCHOOL_YEAR_DOMAIN_END - 1);
+}
+
+function parseSchoolDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { year: value.getFullYear(), month: value.getMonth(), day: value.getDate() };
+  }
+
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) {
+    return parseExcelSerialDate(numeric);
+  }
+
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) {
+    return {
+      year: Number(iso[1]),
+      month: Number(iso[2]) - 1,
+      day: Number(iso[3]),
+    };
+  }
+
+  const separated = text.match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?$/);
+  if (separated) {
+    const first = Number(separated[1]);
+    const second = Number(separated[2]);
+    const year = normaliseYear(separated[3]);
+    const monthFirst = first <= 12 && second > 12;
+    return {
+      year,
+      month: (monthFirst ? first : second) - 1,
+      day: monthFirst ? second : first,
+    };
+  }
+
+  const named = parseNamedSchoolDate(text);
+  if (named) return named;
+
+  const date = new Date(text);
+  if (!Number.isNaN(date.getTime())) {
+    return { year: date.getFullYear(), month: date.getMonth(), day: date.getDate() };
+  }
+
+  return null;
+}
+
+function parseExcelSerialDate(serial) {
+  if (serial < 20000 || serial > 80000) return null;
+  const millis = Math.round((serial - 25569) * 86400 * 1000);
+  const date = new Date(millis);
+  if (Number.isNaN(date.getTime())) return null;
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth(), day: date.getUTCDate() };
+}
+
+function parseNamedSchoolDate(value) {
+  const monthNames = {
+    sep: 8,
+    sept: 8,
+    september: 8,
+    okt: 9,
+    oktober: 9,
+    oct: 9,
+    october: 9,
+    nov: 10,
+    november: 10,
+    dec: 11,
+    december: 11,
+    jan: 0,
+    januari: 0,
+    january: 0,
+    feb: 1,
+    februari: 1,
+    february: 1,
+    mrt: 2,
+    maart: 2,
+    mar: 2,
+    march: 2,
+    apr: 3,
+    april: 3,
+    mei: 4,
+    may: 4,
+    jun: 5,
+    juni: 5,
+    june: 5,
+  };
+  const normalised = value.toLowerCase().replace(/[.,]/g, " ");
+  const dayMatch = normalised.match(/\b(\d{1,2})\b/);
+  for (const [name, month] of Object.entries(monthNames)) {
+    if (new RegExp(`\\b${name}\\b`, "i").test(normalised)) {
+      return {
+        year: null,
+        month,
+        day: dayMatch ? Number(dayMatch[1]) : 15,
+      };
+    }
+  }
+  return null;
+}
+
+function normaliseYear(value) {
+  if (!value) return null;
+  const year = Number(value);
+  if (!Number.isFinite(year)) return null;
+  return year < 100 ? 2000 + year : year;
+}
+
+function schoolMonthSlot(month) {
+  if (month >= 8 && month <= 11) return month - 8;
+  if (month >= 0 && month <= 5) return month + 4;
+  return null;
+}
+
+function daysInMonth(year, month) {
+  const safeYear = Number.isFinite(year) ? year : 2025;
+  return new Date(safeYear, month + 1, 0).getDate();
+}
+
+function linearTrendLineForPoints(positionedPoints) {
+  const clean = positionedPoints
+    .map(({ point, x }) => ({ x: Number(x), value: Number(point?.value) }))
+    .filter((entry) => Number.isFinite(entry.x) && Number.isFinite(entry.value));
   if (clean.length < 2) return null;
-  const n = clean.length;
-  const meanX = (n - 1) / 2;
-  const meanY = clean.reduce((sum, value) => sum + value, 0) / n;
+  const meanX = clean.reduce((sum, entry) => sum + entry.x, 0) / clean.length;
+  const meanY = clean.reduce((sum, entry) => sum + entry.value, 0) / clean.length;
   let numerator = 0;
   let denominator = 0;
-  clean.forEach((value, index) => {
-    numerator += (index - meanX) * (value - meanY);
-    denominator += (index - meanX) ** 2;
+  clean.forEach((entry) => {
+    numerator += (entry.x - meanX) * (entry.value - meanY);
+    denominator += (entry.x - meanX) ** 2;
   });
   if (!denominator) return null;
   const slope = numerator / denominator;
   const intercept = meanY - slope * meanX;
+  const startX = Math.min(...clean.map((entry) => entry.x));
+  const endX = Math.max(...clean.map((entry) => entry.x));
   return {
-    start: clamp(intercept, 0, 100),
-    end: clamp(intercept + slope * (n - 1), 0, 100),
+    startX,
+    endX,
+    start: clamp(intercept + slope * startX, 0, 100),
+    end: clamp(intercept + slope * endX, 0, 100),
   };
-}
-
-function groupedAxisLabels(points) {
-  if (!points.length) return [];
-  const labels = [];
-
-  points.forEach((point, index) => {
-    const text = trendAxisLabel(point, index);
-    const previous = labels[labels.length - 1];
-    if (previous?.text === text) {
-      previous.endIndex = index;
-      previous.centerIndex = (previous.startIndex + previous.endIndex) / 2;
-      return;
-    }
-    labels.push({
-      text,
-      startIndex: index,
-      endIndex: index,
-      centerIndex: index,
-      period: periodNumberFromLabel(text),
-    });
-  });
-
-  return labels;
-}
-
-function trendAxisLabel(point, index) {
-  const raw = point.period || point.label || point.category || "";
-  const text = String(raw).replace(/\s+/g, " ").trim().toUpperCase();
-  return text.slice(0, 12) || String(index + 1);
-}
-
-function periodNumberFromLabel(label) {
-  const text = String(label || "").toUpperCase();
-  if (/EXPAR|PAR\s*EX|PAAS|EASTER/.test(text)) return 2;
-  const match = text.match(/\b(?:DW|EX)\s*(\d+)\b/);
-  return match ? Number(match[1]) : null;
-}
-
-function periodBoundaryLines(labels) {
-  const lines = [];
-  for (let index = 1; index < labels.length; index += 1) {
-    const previous = labels[index - 1];
-    const current = labels[index];
-    if (previous.period == null || current.period == null || previous.period === current.period) continue;
-    lines.push({ index: (previous.endIndex + current.startIndex) / 2 });
-  }
-  return lines;
-}
-
-function periodSpansFromAxisLabels(labels) {
-  const spans = [];
-  for (const label of labels) {
-    if (label.period == null) continue;
-    const previous = spans[spans.length - 1];
-    if (previous?.period === label.period) {
-      previous.endIndex = label.endIndex;
-      previous.centerIndex = (previous.startIndex + previous.endIndex) / 2;
-      continue;
-    }
-    spans.push({
-      period: label.period,
-      startIndex: label.startIndex,
-      endIndex: label.endIndex,
-      centerIndex: label.centerIndex,
-    });
-  }
-  return spans.length > 1 ? spans : [];
 }
