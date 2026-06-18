@@ -148,7 +148,7 @@ function calculateStudent(student, assignments, categories, config) {
   });
   const baseCategoryRows = categories.map((category) => calculateCategory(student, classAssignments, category));
   const categoryRows = applyAvailableEvidenceWeights(baseCategoryRows);
-  const finalWeighted = categoryRows.some((row) => row.hasAvailableEvidence)
+  const calculatedWeighted = categoryRows.some((row) => row.hasAvailableEvidence)
     ? categoryRows.reduce((sum, row) => sum + (Number.isFinite(row.rawPercentage) ? row.rawPercentage * row.effectiveWeight : 0), 0)
     : null;
   const expectedRequired = classAssignments.filter((assignment) => {
@@ -165,9 +165,10 @@ function calculateStudent(student, assignments, categories, config) {
   const trend = calculateTrend(student, classAssignments.filter((assignment) => assignment.useInTrend));
   const dwExamGap = calculateDwExamGap(categoryRows);
   const importedFinal = getImportedFinal(student);
+  const resolvedFinal = resolveFinalWeighted(calculatedWeighted, importedFinal);
   const flags = calculateFlags({
     student,
-    finalWeighted,
+    finalWeighted: resolvedFinal.value,
     importedFinal,
     categoryRows,
     evidenceCoverage,
@@ -185,7 +186,9 @@ function calculateStudent(student, assignments, categories, config) {
     displayNumber: student.displayNumber,
     subject: config.subject || student.subject,
     categoryRows,
-    finalWeighted: round(finalWeighted),
+    finalWeighted: round(resolvedFinal.value),
+    calculatedWeighted: round(calculatedWeighted),
+    finalSource: resolvedFinal.source,
     importedFinal,
     evidenceCoverage,
     evidence: {
@@ -201,7 +204,7 @@ function calculateStudent(student, assignments, categories, config) {
     flags,
     comments: student.comments,
     summaries: student.summaries,
-    thresholdBand: thresholdBand(finalWeighted),
+    thresholdBand: thresholdBand(resolvedFinal.value),
     assignmentScores: classAssignments.map((assignment) => {
       const score = student.scores.get(assignment.id);
       return {
@@ -473,6 +476,25 @@ function getYearTotal(finalWeighted, importedFinal) {
     };
   }
   return null;
+}
+
+function resolveFinalWeighted(calculatedWeighted, importedFinal) {
+  if (isPercentageSummary(importedFinal)) {
+    return {
+      value: importedFinal.value,
+      source: "imported",
+    };
+  }
+  if (Number.isFinite(calculatedWeighted)) {
+    return {
+      value: calculatedWeighted,
+      source: "calculated",
+    };
+  }
+  return {
+    value: null,
+    source: "missing",
+  };
 }
 
 function isPercentageSummary(summary) {
