@@ -2,6 +2,7 @@ const PRESET_KEY = "skore-analyser-weighting-presets";
 const PREFERENCES_KEY = "skore-analyser-preferences";
 const NOTES_KEY = "skore-analyser-teacher-notes";
 const DECISIONS_KEY = "skore-analyser-teacher-decisions";
+const PROJECT_DRAFTS_KEY = "skore-analyser-project-drafts";
 
 export function loadPresets() {
   try {
@@ -117,4 +118,30 @@ export function saveDecision(workspaceKey, studentId, patch) {
     updatedAt: new Date().toISOString(),
   };
   return saveDecisions(workspaceKey, current);
+}
+
+export function loadProjectDraft(workspaceKey) {
+  try {
+    const drafts = JSON.parse(localStorage.getItem(PROJECT_DRAFTS_KEY) || "{}");
+    return drafts[workspaceKey] || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveProjectDraft(workspaceKey, payload) {
+  try {
+    const drafts = JSON.parse(localStorage.getItem(PROJECT_DRAFTS_KEY) || "{}");
+    drafts[workspaceKey] = {
+      savedAt: new Date().toISOString(),
+      payload,
+    };
+    localStorage.setItem(PROJECT_DRAFTS_KEY, JSON.stringify(drafts));
+    return { ok: true, savedAt: drafts[workspaceKey].savedAt };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error?.name || error?.message || "LOCAL_STORAGE_ERROR",
+    };
+  }
 }

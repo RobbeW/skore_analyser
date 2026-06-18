@@ -1,0 +1,177 @@
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+* {
+  box-shadow: none !important;
+}
+
+body {
+  background: #ffffff !important;
+  color: #111827;
+  font-size: 11pt;
+}
+
+.app-header,
+.workflow-panel,
+.dashboard-header,
+.overview-grid,
+.cards-heading,
+.calculation-drawer,
+.button,
+.filters,
+.student-nav,
+.card-tour-overlay,
+.print-preview-dialog,
+.dashboard-guide-dialog,
+.trend-point-dialog,
+#upload-step,
+#mapping-step {
+  display: none !important;
+}
+
+.app-layout {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.workspace {
+  display: block;
+}
+
+#dashboard-step,
+.student-cards {
+  display: block !important;
+}
+
+.student-card {
+  page-break-inside: avoid;
+  break-inside: avoid;
+  page-break-after: always;
+  height: 273mm;
+  margin: 0;
+  padding: 6mm;
+  border: 1px solid #9ca3af;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.student-card:nth-child(n + 2) {
+  page-break-before: always;
+}
+
+.card-header,
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr 62mm;
+  gap: 6mm;
+}
+
+.card-grid {
+  grid-template-columns: 1fr 0.85fr;
+  gap: 4mm;
+  margin-top: 4mm;
+}
+
+.student-title {
+  font-size: 13pt;
+}
+
+.student-meta,
+.year-chart figcaption,
+.chart-legend,
+.explain-text,
+.advice-summary p,
+.flag-item p {
+  font-size: 8.5pt;
+}
+
+.chart-svg {
+  max-height: 42mm;
+}
+
+th,
+td {
+  padding: 2.4mm;
+  font-size: 8.5pt;
+}
+
+.advice-summary,
+.flag-item {
+  break-inside: avoid;
+}
+
+.grade-badge,
+.band-90,
+.band-80,
+.band-70,
+.band-60,
+.band-50,
+.band-low {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.teacher-notes {
+  border: 1px solid #9ca3af;
+}
+
+.print-one-page .print-optional,
+.print-one-page .print-optional-grid,
+.print-one-page .calculation-drawer,
+.print-one-page .card-section[data-tour-part="graph"] > .chart-svg,
+.print-one-page .card-section[data-tour-part="graph"] > div[aria-label] {
+  display: none !important;
+}
+
+.print-one-page .student-card {
+  padding: 4mm;
+}
+
+.print-one-page .student-meta,
+.print-one-page .year-chart figcaption,
+.print-one-page .chart-legend,
+.print-one-page .explain-text,
+.print-one-page .advice-summary p,
+.print-one-page .flag-item p,
+.print-one-page th,
+.print-one-page td {
+  font-size: 8pt;
+}
+
+.print-one-page th,
+.print-one-page td {
+  padding: 2mm;
+}
+
+.print-one-page .card-grid,
+.print-one-page .decision-grid {
+  grid-template-columns: 1fr 0.78fr;
+  gap: 3mm;
+}
+
+.print-one-page .chart-svg {
+  max-height: 28mm;
+}
+
+.print-one-page .teacher-notes,
+.print-one-page .teacher-advice {
+  min-height: 22mm;
+}
+
+.print-one-page .flag-item p {
+  display: none;
+}
+
+.print-one-page .advice-summary {
+  padding: 2.5mm;
+}
+
+th {
+  background: #f3f4f6 !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}

@@ -1,7 +1,13 @@
 import { t } from "./i18n.js";
 
 export function exportProjectJson(model, config, analysis, notes = {}, filters = {}, decisions = {}) {
-  const payload = {
+  const payload = buildProjectPayload(model, config, analysis, notes, filters, decisions);
+  downloadText(`${safeName(model.fileName)}-project.json`, JSON.stringify(payload, null, 2), "application/json");
+  return payload;
+}
+
+export function buildProjectPayload(model, config, analysis, notes = {}, filters = {}, decisions = {}) {
+  return {
     exportedAt: new Date().toISOString(),
     privacy: t("export.privacy"),
     model: serialiseModel(model),
@@ -9,9 +15,8 @@ export function exportProjectJson(model, config, analysis, notes = {}, filters =
     filters,
     teacherNotes: notes,
     teacherDecisions: decisions,
-    analysis: serialiseAnalysis(analysis, false),
+    analysis: analysis ? serialiseAnalysis(analysis, false) : null,
   };
-  downloadText(`${safeName(model.fileName)}-project.json`, JSON.stringify(payload, null, 2), "application/json");
 }
 
 export function exportSummaryCsv(analysis, anonymised = true, notes = {}, decisions = {}) {
