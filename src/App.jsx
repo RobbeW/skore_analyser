@@ -110,6 +110,9 @@ const CARD_TOUR_STEPS = [
   { part: "advice", titleKey: "tour.adviceTitle", bodyKey: "tour.adviceBody" },
   { part: "notes", titleKey: "tour.notesTitle", bodyKey: "tour.notesBody" },
 ];
+const TOUR_REQUIRED_SECTIONS = {
+  table: "score",
+};
 
 const FALLBACK_COPY = {
   nl: {
@@ -523,6 +526,24 @@ export default function App() {
     });
   }
 
+  function changeActiveTour(nextTour) {
+    const requiredSection = nextTour ? TOUR_REQUIRED_SECTIONS[CARD_TOUR_STEPS[nextTour.step]?.part] : null;
+    if (requiredSection && !openCardSections[requiredSection]) {
+      persistPreferences({
+        openCardSections: {
+          ...openCardSections,
+          [requiredSection]: true,
+        },
+      });
+    }
+    setActiveTour(nextTour);
+  }
+
+  function startStudentTour(studentId) {
+    scrollToStudent(studentId);
+    window.setTimeout(() => changeActiveTour({ studentId, step: 0 }), 220);
+  }
+
   function closeTour(completed = false) {
     setActiveTour(null);
     if (completed) {
@@ -611,10 +632,7 @@ export default function App() {
               onFiltersChange={updateFilters}
               onNoteChange={updateNote}
               onScrollToStudent={scrollToStudent}
-              onStartTour={(studentId) => {
-                scrollToStudent(studentId);
-                window.setTimeout(() => setActiveTour({ studentId, step: 0 }), 220);
-              }}
+              onStartTour={startStudentTour}
               onPrintStudent={printStudentCard}
               printStudentId={printStudentId}
               onEvaluationClick={setEvaluationDialog}
@@ -628,7 +646,7 @@ export default function App() {
         <StudentTourOverlay
           c={c}
           activeTour={activeTour}
-          onChange={setActiveTour}
+          onChange={changeActiveTour}
           onClose={() => closeTour(false)}
           onComplete={() => closeTour(true)}
         />
@@ -1750,7 +1768,7 @@ function StudentCard({
         </section>
 
         <div className="card-grid compact-detail-grid">
-          <section className="card-section compact-detail-section" data-tour-part="table">
+          <section className="card-section compact-detail-section">
             <Accordion
               type="single"
               collapsible
@@ -1761,7 +1779,9 @@ function StudentCard({
               <AccordionItem value="score">
                 <AccordionTrigger>{t("student.calculationDetails")}</AccordionTrigger>
                 <AccordionContent>
-                  <ScoreTable rows={student.categoryRows} />
+                  <div className="score-table-tour-target" data-tour-part="table">
+                    <ScoreTable rows={student.categoryRows} />
+                  </div>
                   <div className="calculation-note">
                     <p>{t("student.evidenceBody", {
                       available: student.evidence.availableRequired,
