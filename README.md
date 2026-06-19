@@ -37,10 +37,4 @@ After pushing to the `main` branch, GitHub Actions will:
 
 In GitHub, enable Pages with **Source: GitHub Actions**.
 
-## Data Privacy
 
-Example Excel files belong only in `example_data/`.
-
-The build does not copy `example_data` into `dist`, and `.gitignore` excludes `example_data/*.xlsx` so local student spreadsheets are not committed accidentally.
-
-The app processes uploaded workbooks in the browser.
