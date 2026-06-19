@@ -98,7 +98,7 @@ const GENERATION_STEPS = [
 ];
 const DEFAULT_OPEN_CARD_SECTIONS = {
   duiding: false,
-  contextCharts: false,
+  contextCharts: true,
   score: false,
   comments: false,
 };
@@ -849,10 +849,6 @@ function EvaluationReviewScreen({
 
       <div className="review-layout">
         <Card className="review-guidance-card">
-          <CardHeader>
-            <CardTitle>{t("review.guidanceTitle")}</CardTitle>
-            <CardDescription>{t("review.guidanceBody")}</CardDescription>
-          </CardHeader>
           <CardContent>
             <div className="usage-summary-grid">
               <StatCard label={t("usage.include")} value={counts.include} compact />
