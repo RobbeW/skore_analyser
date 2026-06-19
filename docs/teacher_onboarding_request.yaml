@@ -1,0 +1,48 @@
+request_analysis:
+  core_problem: "The MVP works, but the flow still assumes a technical user. Teachers need a guided path with fewer visible choices and more plain-language explanation."
+  product_feedback:
+    - "Make upload the only primary first action; demo data should be secondary."
+    - "Rename technical labels to teacher language, for example drempel to cesuurwaarde and dekking to bewijsvolledigheid."
+    - "Move advanced assignment mapping behind a disclosure."
+    - "Use familiar score baskets rather than abstract category rows."
+    - "Explain trend and volatility in natural language."
+    - "Show class groups as direct choices instead of expecting teachers to find a filter."
+    - "Avoid duplicate advice when one rule already explains another."
+    - "Treat redo or retake columns as replacements, not extra missing evidence, when a paired score exists."
+
+improved_request:
+  goal: "Turn Skore Analyser into a beginner-friendly teacher workflow for generating explainable orientation cards."
+  onboarding:
+    - "Teacher drops a Skore Excel export."
+    - "App confirms the detected file, class groups, learners, and assessments in a simple summary."
+    - "Teacher enters or confirms course name."
+    - "Teacher enters cesuurwaarde."
+    - "Teacher chooses a scoring-basket preset or adjusts basket weights."
+    - "Advanced assignment mapping remains available but collapsed."
+    - "Teacher clicks create cards and sees a short processing animation."
+  default_baskets:
+    names: ["DW1", "EX1", "DW2", "EXPAR", "EX2"]
+    iw_weights: [10, 30, 15, null, 45]
+    generic_weights: "DW 25%, EX 75%, with semester II weighted more heavily when split."
+  dashboard:
+    - "Teacher can switch between class groups with visible class buttons."
+    - "Cards show a year graph with percentage points, axis labels, and a trend line."
+    - "Trend text explains direction and volatility without assuming mathematical knowledge."
+    - "Advice labels are not duplicated when they explain the same cut-off issue."
+  student_card_tour:
+    - "Each card has a Rondleiding/Tour button."
+    - "The tour explains the total, score table, year graph, advice rules, and teacher notes."
+  missing_scores:
+    - "If a missing original test has a paired retake or redo score, the missing counterpart should not count as incomplete evidence."
+
+acceptance_criteria:
+  - "Upload screen has one primary action: drag/drop or choose a file."
+  - "Setup screen is organized into teacher-readable steps."
+  - "Cesuurwaarde replaces below-threshold wording."
+  - "Bewijsvolledigheid replaces coverage/dekking wording in teacher-facing UI."
+  - "IW basket preset defaults to 10, 30, 15, blank, 45."
+  - "Generate button shows an in-progress state."
+  - "Class groups are visible as tabs/buttons on the dashboard."
+  - "Each student card includes a year trend graph and plain-language trend explanation."
+  - "Each student card includes a tour dialog."
+  - "Retake/redo missing cells are ignored when a paired available score exists."
