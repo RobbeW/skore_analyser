@@ -98,7 +98,7 @@ const GENERATION_STEPS = [
 ];
 const DEFAULT_OPEN_CARD_SECTIONS = {
   duiding: false,
-  signals: false,
+  contextCharts: false,
   score: false,
   comments: false,
 };
@@ -1701,39 +1701,41 @@ function StudentCard({
               </AccordionContent>
             </AccordionItem>
           </Accordion>
-          <div className="peer-chart-grid">
-            <div className="peer-chart-stack">
-              <DotPlot students={peers} selected={student} anonymised={anonymised} />
-              <QuartileStrip students={peers} selected={student} />
-            </div>
-            <MiniHistogram students={peers} selected={student} anonymised={anonymised} onBinClick={onHistogramClick} />
-          </div>
+          <Accordion
+            type="single"
+            collapsible
+            className="context-charts-accordion"
+            value={sectionOpen.contextCharts ? "context" : ""}
+            onValueChange={(value) => onSectionOpenChange?.("contextCharts", value === "context")}
+          >
+            <AccordionItem value="context">
+              <AccordionTrigger>{t("chart.classContext")}</AccordionTrigger>
+              <AccordionContent>
+                <div className="peer-chart-grid">
+                  <div className="peer-chart-stack">
+                    <DotPlot students={peers} selected={student} anonymised={anonymised} />
+                    <QuartileStrip students={peers} selected={student} />
+                  </div>
+                  <MiniHistogram students={peers} selected={student} anonymised={anonymised} onBinClick={onHistogramClick} />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </section>
 
         <section className="card-section card-section--summary" data-tour-part="advice">
           <PedagogicalSummary student={student} />
           {student.flags.length ? (
-            <Accordion
-              type="single"
-              collapsible
-              className="flag-accordion compact-flag-accordion"
-              value={sectionOpen.signals ? "flags" : ""}
-              onValueChange={(value) => onSectionOpenChange?.("signals", value === "flags")}
-            >
-              <AccordionItem value="flags">
-                <AccordionTrigger>{t("student.signalDetails")}</AccordionTrigger>
-                <AccordionContent>
-                  {student.flags.map((flag, index) => (
-                    <div className="flag-detail-row" key={`${flag.type}-${index}`}>
-                      <Badge variant={flag.tone === "danger" ? "destructive" : flag.tone === "warning" ? "warning" : "secondary"}>
-                        {flag.label}
-                      </Badge>
-                      <p>{flag.detail}</p>
-                    </div>
-                  ))}
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+            <div className="flag-detail-list">
+              {student.flags.map((flag, index) => (
+                <div className="flag-detail-row" key={`${flag.type}-${index}`}>
+                  <Badge variant={flag.tone === "danger" ? "destructive" : flag.tone === "warning" ? "warning" : "secondary"}>
+                    {flag.label}
+                  </Badge>
+                  <p>{flag.detail}</p>
+                </div>
+              ))}
+            </div>
           ) : null}
         </section>
 
@@ -1914,10 +1916,10 @@ function YearTrend({ trend, student, onEvaluationClick }) {
     return <p className="muted">{t("chart.noTrendData")}</p>;
   }
   const width = 720;
-  const height = 220;
+  const height = 184;
   const left = 48;
-  const top = 18;
-  const bottom = 164;
+  const top = 30;
+  const bottom = 132;
   const axisWidth = width - left - 28;
   const axisHeight = bottom - top;
   const positionedPoints = positionTrendPoints(points);
@@ -1950,30 +1952,35 @@ function YearTrend({ trend, student, onEvaluationClick }) {
             y2={yFor(trendLine.end)}
           />
         ) : null}
-        {positionedPoints.map(({ point, x }, index) => (
-          <g
-            key={`${point.assignmentId || point.label}-${index}`}
-            className={cn("trend-dot", isExamPoint(point) && "is-exam-point", point.usage === "displayOnly" && "is-context-point")}
-            role="button"
-            tabIndex={0}
-            transform={`translate(${xFor(x)}, ${yFor(point.value)})`}
-            onClick={() => onEvaluationClick?.({ student, point })}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onEvaluationClick?.({ student, point });
-              }
-            }}
-            aria-label={`${t("chart.evaluation")}: ${point.label}, ${formatNumber(point.value)}%`}
-          >
-            <text className="trend-dot-label chart-svg-tooltip" x="0" y="-15" textAnchor="middle">
-              {shortLabel(`${point.label} - ${formatNumber(point.value)}%`, 34)}
-            </text>
-            <circle cx="0" cy="0" r="7" />
-          </g>
-        ))}
+        {positionedPoints.map(({ point, x }, index) => {
+          const dotX = xFor(x);
+          const dotY = yFor(point.value);
+          const label = chartPointLabelPosition(dotX, dotY, { width, top, bottom });
+          return (
+            <g
+              key={`${point.assignmentId || point.label}-${index}`}
+              className={cn("trend-dot", isExamPoint(point) && "is-exam-point", point.usage === "displayOnly" && "is-context-point")}
+              role="button"
+              tabIndex={0}
+              transform={`translate(${dotX}, ${dotY})`}
+              onClick={() => onEvaluationClick?.({ student, point })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onEvaluationClick?.({ student, point });
+                }
+              }}
+              aria-label={`${t("chart.evaluation")}: ${point.label}, ${formatNumber(point.value)}%`}
+            >
+              <text className="trend-dot-label chart-svg-tooltip" x={label.x} y={label.y} textAnchor={label.anchor}>
+                {shortLabel(`${point.label} - ${formatNumber(point.value)}%`, 30)}
+              </text>
+              <circle cx="0" cy="0" r="7" />
+            </g>
+          );
+        })}
         {SCHOOL_YEAR_MONTHS.map((month, index) => (
-          <text key={month.labelKey} className="axis-label month-axis-label" x={xFor(index + 0.5)} y={bottom + 30} textAnchor="middle">
+          <text key={month.labelKey} className="axis-label month-axis-label" x={xFor(index + 0.5)} y={bottom + 26} textAnchor="middle">
             {t(month.labelKey)}
           </text>
         ))}
@@ -1991,7 +1998,7 @@ function DotPlot({ students, selected, anonymised }) {
   const y = 52;
   const values = students.filter((student) => Number.isFinite(student.finalWeighted));
   return (
-    <svg className="chart-svg compact-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("chart.dotPlot")}>
+    <svg className="chart-svg compact-chart dotplot-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("chart.dotPlot")}>
       <line x1={left} y1={y} x2={left + axisWidth} y2={y} stroke="var(--chart-axis)" />
       {[0, 50, 100].map((value) => (
         <g key={value}>
@@ -2103,14 +2110,14 @@ function Histogram({ students, selected, compact = false, anonymised = false, on
   const counts = binStudents.map((items) => items.length);
   const max = Math.max(1, ...counts);
   const width = 560;
-  const height = compact ? 155 : 230;
+  const height = compact ? 134 : 230;
   const left = 42;
-  const bottom = compact ? 122 : 188;
+  const bottom = compact ? 106 : 188;
   const barWidth = 64;
   const gap = 20;
   const bars = bins.map((bin, index) => {
     const x = left + 16 + index * (barWidth + gap);
-    const barHeight = (counts[index] / max) * (compact ? 78 : 140);
+    const barHeight = (counts[index] / max) * (compact ? 62 : 140);
     const y = bottom - barHeight;
     const band = thresholdBand((bin[0] + Math.min(bin[1], 100)) / 2);
     const studentsInBin = binStudents[index];
@@ -2119,7 +2126,7 @@ function Histogram({ students, selected, compact = false, anonymised = false, on
   const selectedBar = selected ? bars.find((bar) => bar.studentsInBin.some((student) => student.id === selected.id)) : null;
   const selectedMarker = selectedBar ? {
     x: selectedBar.x + barWidth / 2,
-    y: Math.max(20, selectedBar.y - 36),
+    y: Math.max(42, selectedBar.y - 24),
   } : null;
 
   return (
@@ -2150,7 +2157,7 @@ function Histogram({ students, selected, compact = false, anonymised = false, on
             }}
           >
             <rect x={x} y={y} width={barWidth} height={barHeight} rx="6" fill={bandColor(band.id)} />
-            <text x={x + barWidth / 2} y={y - 8} textAnchor="middle">{counts[index]}</text>
+            <text x={x + barWidth / 2} y={Math.max(14, y - 8)} textAnchor="middle">{counts[index]}</text>
             <text className="histogram-bin-tooltip chart-svg-tooltip" x={x + barWidth / 2} y={Math.max(14, y - 24)} textAnchor="middle">
               {histogramTooltipLabel(bin[2], studentsInBin, anonymised)}
             </text>
@@ -2162,7 +2169,7 @@ function Histogram({ students, selected, compact = false, anonymised = false, on
         <g className="histogram-selected-marker" transform={`translate(${selectedMarker.x}, ${selectedMarker.y})`}>
           <g className="histogram-selected-arrow">
             <path d="M 0 18 L -9 4 L -3 4 L -3 -8 L 3 -8 L 3 4 L 9 4 Z" />
-            <text className="histogram-selected-label chart-svg-tooltip" x="0" y="-15" textAnchor="middle">{formatGrade(selected.finalWeighted)}</text>
+            <text className="histogram-selected-label chart-svg-tooltip" x="0" y="-12" textAnchor="middle">{formatGrade(selected.finalWeighted)}</text>
           </g>
         </g>
       ) : null}
@@ -2519,7 +2526,7 @@ function inferBasketCategory(assignment, index, assignments, basketOrder = BASKE
     const upper = name.toUpperCase();
     return upper.startsWith(category) && upper !== "EXPAR";
   });
-  const basketFromText = inferBasketFromText(assignmentText, category, basketOrder, broadText);
+  const basketFromText = inferBasketFromText(assignmentText, category, basketOrder, broadText, assignment.date);
 
   if (basketFromText) return basketFromText;
   if (matchingBaskets.length) {
@@ -2533,18 +2540,70 @@ function inferBasketCategory(assignment, index, assignments, basketOrder = BASKE
   return category || basketOrder[Math.min(index, basketOrder.length - 1)] || "OTHER";
 }
 
-function inferBasketFromText(text, category, basketOrder, broadText = text) {
-  if (/par|paas|partial|partieel/.test(broadText) && basketOrder.includes("EXPAR")) return "EXPAR";
+function inferBasketFromText(text, category, basketOrder, broadText = text, dateText = "") {
   const period = detectPeriod(text);
-  if (period && basketOrder.includes(`${category}${period}`)) return `${category}${period}`;
+  const hasSpringExamText = /(parex|expar|paas|easter|partial|partieel)/.test(broadText);
+
   if (category === "EX") {
+    const parsedDate = parseDateFromText(dateText) || parseDateFromText(broadText) || parseDateFromText(text);
+    const month = parsedDate?.month;
+
+    if (isWinterExamMonth(month) && basketOrder.includes("EX1")) return "EX1";
+    if (isSpringExamMonth(month)) return springExamBasket(basketOrder, hasSpringExamText);
+    if (isFinalExamMonth(month)) return finalExamBasket(basketOrder);
+
     if (/(kerst|christmas|sem\s*1|semester\s*1)/.test(broadText) && basketOrder.includes("EX1")) return "EX1";
-    if (/(paas|easter)/.test(broadText) && basketOrder.includes("EXPAR")) return "EXPAR";
-    if (/(juni|eind|final|sem\s*2|semester\s*2)/.test(broadText)) {
-      if (basketOrder.includes("EX3")) return "EX3";
-      if (basketOrder.includes("EX2")) return "EX2";
-    }
+    if (hasSpringExamText) return springExamBasket(basketOrder, true);
+    if (/(juni|june|eind|final)/.test(broadText)) return finalExamBasket(basketOrder);
+
+    if (period === 1 && basketOrder.includes("EX1")) return "EX1";
+    if (period === 2) return springExamBasket(basketOrder, false);
+    if (period === 3) return finalExamBasket(basketOrder);
+
+    return null;
   }
+
+  if (hasSpringExamText && basketOrder.includes("EXPAR")) return "EXPAR";
+  if (period && basketOrder.includes(`${category}${period}`)) return `${category}${period}`;
+  return null;
+}
+
+function parseDateFromText(value) {
+  const direct = parseSchoolDate(value);
+  if (direct) return direct;
+
+  const text = String(value || "");
+  const iso = text.match(/\b\d{4}-\d{1,2}-\d{1,2}\b/);
+  if (iso) return parseSchoolDate(iso[0]);
+
+  const separated = text.match(/\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b/);
+  if (separated) return parseSchoolDate(separated[0]);
+
+  return parseNamedSchoolDate(text);
+}
+
+function isWinterExamMonth(month) {
+  return month === 11 || month === 0 || month === 1;
+}
+
+function isSpringExamMonth(month) {
+  return month === 2 || month === 3;
+}
+
+function isFinalExamMonth(month) {
+  return month === 4 || month === 5;
+}
+
+function springExamBasket(basketOrder, preferPartial = false) {
+  if (preferPartial && basketOrder.includes("EXPAR")) return "EXPAR";
+  if (basketOrder.includes("EX2")) return "EX2";
+  if (basketOrder.includes("EXPAR")) return "EXPAR";
+  return null;
+}
+
+function finalExamBasket(basketOrder) {
+  if (basketOrder.includes("EX3")) return "EX3";
+  if (basketOrder.includes("EX2")) return "EX2";
   return null;
 }
 
@@ -2727,6 +2786,25 @@ function histogramTooltipLabel(label, studentsInBin = [], anonymised = false) {
   const rest = studentsInBin.length > names.length ? ` +${studentsInBin.length - names.length}` : "";
   const text = `${label}: ${names.join(", ")}${rest}`;
   return text.length <= 44 ? text : `${text.slice(0, 41).trim()}...`;
+}
+
+function chartPointLabelPosition(x, y, bounds) {
+  let labelX = 0;
+  let anchor = "middle";
+  if (x < 108) {
+    labelX = 14;
+    anchor = "start";
+  } else if (x > bounds.width - 108) {
+    labelX = -14;
+    anchor = "end";
+  }
+
+  const labelY = y < bounds.top + 26 ? 22 : -13;
+  return {
+    x: labelX,
+    y: labelY,
+    anchor,
+  };
 }
 
 function quantile(values, q) {

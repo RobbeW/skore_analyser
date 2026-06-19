@@ -1200,7 +1200,7 @@ h4 {
 }
 
 .student-card--compact .ui-card-content {
-  padding: 0.15rem 0.72rem 0.72rem;
+  padding: 0.1rem 0.58rem 0.58rem;
 }
 
 .student-title {
@@ -1338,7 +1338,7 @@ h4 {
 }
 
 .card-section--graph {
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.55rem;
 }
 
 .card-section--summary {
@@ -1352,11 +1352,11 @@ h4 {
 }
 
 .student-card--compact .card-section {
-  padding: 0.62rem;
+  padding: 0.48rem;
 }
 
 .card-section h4 {
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.5rem;
   font-size: 1rem;
 }
 
@@ -1365,7 +1365,7 @@ h4 {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.48rem;
 }
 
 .graph-section-heading,
@@ -1404,14 +1404,19 @@ h4 {
   padding-right: 0.35rem;
 }
 
-.compact-flag-accordion {
+.flag-detail-list {
   margin-top: 0.45rem;
+  display: grid;
+  gap: 0.35rem;
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 0.35rem;
 }
 
 .flag-detail-row {
   display: grid;
-  gap: 0.35rem;
-  padding: 0.45rem 0;
+  gap: 0.3rem;
+  padding: 0.42rem 0;
   border-top: 1px solid color-mix(in srgb, var(--primary) 10%, var(--border));
 }
 
@@ -1460,7 +1465,7 @@ h4 {
 }
 
 .notes-section .ui-textarea {
-  min-height: 76px;
+  min-height: 58px;
   resize: vertical;
 }
 
@@ -1469,7 +1474,17 @@ h4 {
 }
 
 .duiding-accordion {
-  margin: 0.55rem 0;
+  margin: 0.38rem 0;
+}
+
+.context-charts-accordion {
+  margin-top: 0.35rem;
+}
+
+.context-charts-accordion .ui-accordion-trigger,
+.duiding-accordion .ui-accordion-trigger {
+  min-height: 34px;
+  padding-block: 0.34rem;
 }
 
 .calculation-note {
@@ -1508,7 +1523,7 @@ h4 {
   width: 100%;
   max-width: 100%;
   height: auto;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .weight-cell-stack {
@@ -1524,7 +1539,11 @@ h4 {
 }
 
 .compact-chart {
-  max-height: 132px;
+  max-height: 112px;
+}
+
+.dotplot-chart {
+  max-height: 82px;
 }
 
 .chart-svg text {
@@ -1660,14 +1679,14 @@ h4 {
 
 .graph-interpretation-panel dl {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.3rem;
   margin: 0;
 }
 
 .graph-interpretation-panel dl > div {
   display: grid;
   grid-template-columns: minmax(104px, 0.32fr) minmax(0, 1fr);
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 
 .graph-interpretation-panel dt {
@@ -1682,7 +1701,7 @@ h4 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(250px, 0.82fr);
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.55rem;
 }
 
 .peer-chart-stack {
@@ -1785,8 +1804,8 @@ h4 {
 
 .quartile-strip {
   position: relative;
-  height: 34px;
-  margin: 0.6rem 0;
+  height: 28px;
+  margin: 0.35rem 0 0.2rem;
   border-radius: var(--radius);
   background: linear-gradient(90deg, #ef7777, #f7e589, #b7f7ca);
 }
@@ -1815,13 +1834,14 @@ h4 {
 
 .quartile-selected {
   display: grid;
-  min-width: 48px;
+  min-width: 44px;
   place-items: center;
   padding: 0 0.35rem;
   border-radius: var(--radius);
   background: var(--primary);
   color: var(--primary-foreground);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
+  font-weight: 900;
 }
 
 .quartile-selected:hover,
