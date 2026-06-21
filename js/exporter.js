@@ -8,6 +8,7 @@ export function exportProjectJson(model, config, analysis, notes = {}, filters =
 
 export function buildProjectPayload(model, config, analysis, notes = {}, filters = {}, decisions = {}) {
   return {
+    mode: model?.mode || analysis?.mode || "vakdocent",
     exportedAt: new Date().toISOString(),
     privacy: t("export.privacy"),
     model: serialiseModel(model),

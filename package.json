@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173"
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "spike:class-teacher": "node scripts/run-class-teacher-parser-spike.js",
+    "test": "node scripts/run-class-teacher-regression.js",
+    "test:class-teacher": "node scripts/run-class-teacher-regression.js --no-build"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.14",
