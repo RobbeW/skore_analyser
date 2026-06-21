@@ -33,9 +33,13 @@ import { cn } from "@/lib/utils";
 
 import { readXlsxWorkbook } from "../js/xlsx-reader.js";
 import { buildDefaultConfig, parseSkoreWorkbook } from "../js/skore-parser.js";
+import { parseClassTeacherReportWorkbook } from "../js/class-teacher-parser.js";
+import { aggregateClassTeacherReportGroups } from "../js/class-teacher-aggregator.js";
+import { calculateClassTeacherAnalysis } from "../js/class-teacher-calculator.js";
+import { periodSchemaForYear, trackById, trackOptionsForYear } from "../js/class-teacher-config.js";
 import { calculateAnalysis, summariseStudents } from "../js/calculator.js";
 import { THRESHOLD_BANDS, thresholdBand } from "../js/config.js";
-import { getLanguage, setLanguage, t } from "../js/i18n.js";
+import { getLanguage, setLanguage, t, translateTrend } from "../js/i18n.js";
 import { buildProjectPayload, exportProjectJson } from "../js/exporter.js";
 import { hydrateProjectPayload } from "../js/project-importer.js";
 import {
@@ -91,6 +95,18 @@ const SCHOOL_YEAR_MONTHS = [
   { month: 5, labelKey: "month.jun" },
 ];
 const SCHOOL_YEAR_DOMAIN_END = SCHOOL_YEAR_MONTHS.length;
+const CLASS_TEACHER_LINE_COLORS = [
+  "#38bdf8",
+  "#34d399",
+  "#fb7185",
+  "#f59e0b",
+  "#a78bfa",
+  "#ec4899",
+  "#14b8a6",
+  "#f97316",
+  "#6366f1",
+  "#84cc16",
+];
 const GENERATION_STEPS = [
   { key: "file", titleKey: "generation.fileTitle", bodyKey: "generation.fileBody" },
   { key: "weights", titleKey: "generation.weightsTitle", bodyKey: "generation.weightsBody" },
@@ -113,12 +129,60 @@ const CARD_TOUR_STEPS = [
 const TOUR_REQUIRED_SECTIONS = {
   table: "score",
 };
+const APP_MODES = ["vakdocent", "klassenleraar"];
 
 const FALLBACK_COPY = {
   nl: {
     localFirst: "Alles blijft lokaal in deze browser.",
     processing: "Bestand lokaal verwerken...",
     parsed: "Bestand herkend. Controleer eerst welke evaluaties meetellen.",
+    classTeacherProcessing: "Rapportbestanden lokaal verwerken...",
+    classTeacherParsed: "Klasrapporten herkend. De mappingcontrole volgt in de volgende stap.",
+    classTeacherFileCountWarning: "Kies 3 of 4 rapportbestanden voor een klassenleraaranalyse.",
+    classTeacherMultiClassWarning: "Deze selectie bevat meerdere klasgroepen. Controleer dit in de volgende stap.",
+    classTeacherReviewReady: "Mapping bevestigd. De klassenleraar-kaarten staan klaar.",
+    classTeacherReviewFlow: "Controle",
+    classTeacherReviewTitle: "Controleer je klasrapporten",
+    classTeacherReviewBody: "Kijk klas, periodes, richting en onbekende vakafkortingen na voordat we leerlingkaarten maken.",
+    classTeacherConfirmMapping: "Mapping bevestigen",
+    classTeacherTrackHelp: "Automatisch afgeleid uit de klasnaam. Pas aan als de klascode afwijkt van de richting.",
+    classTeacherSubjectHelp: "Onbekende afkortingen kan je voorlopig aan een bestaand vak koppelen.",
+    classTeacherStudentsHelp: "Deze preview controleert of leerlingen over de rapportbestanden heen aan elkaar gekoppeld worden.",
+    classTeacherBlocked: "Los eerst de blokkerende punten op.",
+    classTeacherDashboardTitle: "Klassenleraaranalyse",
+    classTeacherDashboardBody: "Elke kaart toont het jaarbeeld van een leerling over alle vakken heen.",
+    classTeacherOverallLine: "Algemene lijn",
+    classTeacherSubjectLines: "Vaklijnen",
+    classTeacherSubjectPicker: "Welke vaklijnen tonen?",
+    classTeacherKeySubjectsOnly: "Sleutelvakken",
+    classTeacherAllSubjects: "Alle vakken",
+    classTeacherSubjectMatrix: "Vakoverzicht",
+    classTeacherKeySubject: "Sleutelvak",
+    classTeacherNoSignals: "Geen opvallende klassenleraar-signalen.",
+    classTeacherTrackSignal: "Richting",
+    classTeacherCardIntro: "Gebruik deze kaart als voorbereiding op de klassenraad: cijfers, vaklijnen en notities samen.",
+    classTeacherMainSubjectDanger: "Hoofdvak in de gevarenzone",
+    classTeacherShowMainSubjectDanger: "Toon leerlingen met hoofdvak in de gevarenzone",
+    classTeacherNoMainSubjectDanger: "Geen hoofdvak in de gevarenzone",
+    classTeacherVisibleStudents: "Getoonde leerlingen",
+    classTeacherFilterAll: "Alle leerlingen",
+    classTeacherBelow65: "Jaartotaal onder 65%",
+    classTeacherPositiveProfiles: "Sterke stabiele profielen",
+    classTeacherSubjectFilter: "Filter op vak",
+    classTeacherRiskSummary: "Aandachtspunten",
+    classTeacherGenerateFlow: "Opbouw",
+    classTeacherGeneratingTitle: "Leerlingkaarten opbouwen",
+    classTeacherGeneratingBody: "We bundelen {students} leerlingen, {subjects} vakken en {periods} rapportperiodes tot rustige klassenraadkaarten.",
+    classTeacherGeneratingReports: "Rapportperiodes koppelen",
+    classTeacherGeneratingSubjects: "Vaklijnen tekenen",
+    classTeacherGeneratingCards: "Kaarten klaarzetten",
+    classTeacherUnknownTrackTitle: "Richting nog niet zeker",
+    classTeacherUnknownTrackBody: "Bevestig de richting in de controle. Dan weet de tool welke hoofdvakken echt belangrijk zijn voor deze klas.",
+    classTeacherMissingPeriodTitle: "Rapportperiode ontbreekt",
+    classTeacherMissingPeriodBody: "{missing} van {expected} verwachte periodes ontbreken. De kaarten blijven bruikbaar, maar de jaarlijn steunt op minder meetpunten.",
+    classTeacherGraphHint: "Beweeg over een punt voor details. De paarse lijn is het jaartotaal; de zachte lijnen zijn vakken.",
+    roleHelpVakdocent: "Een Skore-export voor jouw eigen vak.",
+    roleHelpKlassenleraar: "Drie of vier rapportbestanden voor een hele klas.",
     basketNormalised: "Telt mee als",
     advancedAssignment: "Geavanceerde evaluatiekoppeling",
     visibleAdvice: "Interessante elementen",
@@ -147,6 +211,53 @@ const FALLBACK_COPY = {
     localFirst: "Everything stays local in this browser.",
     processing: "Processing file locally...",
     parsed: "File detected. First check which assessments should count.",
+    classTeacherProcessing: "Processing report files locally...",
+    classTeacherParsed: "Class reports detected. The mapping check follows in the next step.",
+    classTeacherFileCountWarning: "Choose 3 or 4 report files for class-teacher analysis.",
+    classTeacherMultiClassWarning: "This selection contains multiple class groups. Check this in the next step.",
+    classTeacherReviewReady: "Mapping confirmed. Class-teacher cards are ready.",
+    classTeacherReviewFlow: "Check",
+    classTeacherReviewTitle: "Check your class reports",
+    classTeacherReviewBody: "Review class, periods, track, and unknown subject abbreviations before creating student cards.",
+    classTeacherConfirmMapping: "Confirm mapping",
+    classTeacherTrackHelp: "Automatically inferred from the class name. Adjust it if the class code differs from the track.",
+    classTeacherSubjectHelp: "Unknown abbreviations can temporarily be mapped to an existing subject.",
+    classTeacherStudentsHelp: "This preview checks whether students are matched across report files.",
+    classTeacherBlocked: "Resolve blocking issues first.",
+    classTeacherDashboardTitle: "Class-teacher analysis",
+    classTeacherDashboardBody: "Each card shows one student's year profile across all subjects.",
+    classTeacherOverallLine: "Overall line",
+    classTeacherSubjectLines: "Subject lines",
+    classTeacherSubjectPicker: "Which subject lines to show?",
+    classTeacherKeySubjectsOnly: "Key subjects",
+    classTeacherAllSubjects: "All subjects",
+    classTeacherSubjectMatrix: "Subject overview",
+    classTeacherKeySubject: "Key subject",
+    classTeacherNoSignals: "No notable class-teacher signals.",
+    classTeacherTrackSignal: "Track",
+    classTeacherCardIntro: "Use this card to prepare class council: results, subject lines, and notes together.",
+    classTeacherMainSubjectDanger: "Core subject in the danger zone",
+    classTeacherShowMainSubjectDanger: "Show students with a core subject in the danger zone",
+    classTeacherNoMainSubjectDanger: "No core subject in the danger zone",
+    classTeacherVisibleStudents: "Visible students",
+    classTeacherFilterAll: "All students",
+    classTeacherBelow65: "Year total below 65%",
+    classTeacherPositiveProfiles: "Strong stable profiles",
+    classTeacherSubjectFilter: "Filter by subject",
+    classTeacherRiskSummary: "Attention points",
+    classTeacherGenerateFlow: "Build",
+    classTeacherGeneratingTitle: "Building student cards",
+    classTeacherGeneratingBody: "We combine {students} students, {subjects} subjects, and {periods} report periods into calm class-council cards.",
+    classTeacherGeneratingReports: "Linking report periods",
+    classTeacherGeneratingSubjects: "Drawing subject lines",
+    classTeacherGeneratingCards: "Preparing cards",
+    classTeacherUnknownTrackTitle: "Track not confirmed yet",
+    classTeacherUnknownTrackBody: "Confirm the track in the review step. Then the tool knows which core subjects matter most for this class.",
+    classTeacherMissingPeriodTitle: "Report period missing",
+    classTeacherMissingPeriodBody: "{missing} of {expected} expected periods are missing. The cards remain useful, but the year line has fewer points.",
+    classTeacherGraphHint: "Hover a point for details. The purple line is the year total; the soft lines are subjects.",
+    roleHelpVakdocent: "One Skore export for your own subject.",
+    roleHelpKlassenleraar: "Three or four report files for a whole class.",
     basketNormalised: "Counts as",
     advancedAssignment: "Advanced assessment mapping",
     visibleAdvice: "Interesting signals",
@@ -186,10 +297,15 @@ export default function App() {
   const initialPreferences = useMemo(() => loadPreferences(), []);
   const [language, setLanguageState] = useState(initialPreferences.language || "nl");
   const [preferences, setPreferences] = useState(initialPreferences);
+  const [appMode, setAppModeState] = useState(APP_MODES.includes(initialPreferences.appMode) ? initialPreferences.appMode : "vakdocent");
   const [workflowStep, setWorkflowStep] = useState("upload");
   const [model, setModel] = useState(null);
   const [config, setConfig] = useState(null);
   const [analysis, setAnalysis] = useState(null);
+  const [classTeacherReports, setClassTeacherReports] = useState([]);
+  const [classTeacherAnalyses, setClassTeacherAnalyses] = useState([]);
+  const [classTeacherTrackOverrides, setClassTeacherTrackOverrides] = useState({});
+  const [classTeacherSubjectOverrides, setClassTeacherSubjectOverrides] = useState({});
   const [filters, setFilters] = useState(defaultFilters);
   const [notes, setNotes] = useState({});
   const [presets, setPresets] = useState(() => loadPresets());
@@ -243,10 +359,14 @@ export default function App() {
   }, [printStudentId]);
 
   const workspaceKey = useMemo(() => {
+    if (appMode === "klassenleraar" && classTeacherAnalyses[0]) {
+      const current = classTeacherAnalyses[0];
+      return `klassenleraar::${current.classCode || "klas"}::${current.periodSchemaId || "periodes"}`.toLowerCase();
+    }
     const fileName = model?.fileName || "workbook";
     const subject = config?.subject || model?.subjects?.[0]?.value || "subject";
     return `${fileName}::${subject}`.toLowerCase();
-  }, [config?.subject, model]);
+  }, [appMode, classTeacherAnalyses, config?.subject, model]);
 
   const filteredStudents = useMemo(() => {
     if (!analysis) return [];
@@ -258,6 +378,14 @@ export default function App() {
     if (patch.language) setLanguage(patch.language);
     setPreferences(next);
     if (patch.language) setLanguageState(patch.language);
+  }
+
+  function changeAppMode(nextMode) {
+    if (!APP_MODES.includes(nextMode)) return;
+    setAppModeState(nextMode);
+    persistPreferences({ appMode: nextMode });
+    setUploadSummary(null);
+    setStatus({ kind: "idle", text: t("upload.empty") });
   }
 
   function persistLastBasketPreset(presetName) {
@@ -284,6 +412,10 @@ export default function App() {
       const parsedModel = parseSkoreWorkbook(workbook);
       const nextConfig = createInitialConfig(parsedModel, preferences);
       const nextWorkspaceKey = `${parsedModel.fileName}::${nextConfig.subject || "subject"}`.toLowerCase();
+      setClassTeacherReports([]);
+      setClassTeacherAnalyses([]);
+      setClassTeacherTrackOverrides({});
+      setClassTeacherSubjectOverrides({});
       setModel(parsedModel);
       setConfig(nextConfig);
       setAnalysis(null);
@@ -307,15 +439,72 @@ export default function App() {
     }
   }
 
+  async function loadClassTeacherReports(fileList) {
+    const files = Array.from(fileList || []).filter((file) => /\.(xlsx|xls)$/i.test(file.name));
+    setUploadSummary(null);
+    setClassTeacherReports([]);
+    setClassTeacherAnalyses([]);
+    setClassTeacherTrackOverrides({});
+    setClassTeacherSubjectOverrides({});
+
+    if (files.length < 3 || files.length > 4) {
+      setStatus({ kind: "warning", text: c("classTeacherFileCountWarning") });
+      return;
+    }
+
+    setIsBusy(true);
+    setStatus({ kind: "busy", text: c("classTeacherProcessing") });
+    try {
+      const reports = await Promise.all(files.map(async (file) => {
+        const workbook = await readXlsxWorkbook(file, { fileName: file.name });
+        return parseClassTeacherReportWorkbook(workbook);
+      }));
+      const analyses = calculateClassTeacherAnalysesFromReports(reports);
+      const summary = buildClassTeacherUploadSummary(files, analyses);
+
+      setModel(null);
+      setConfig(null);
+      setAnalysis(null);
+      setNotes({});
+      setFilters(defaultFilters());
+      setClassTeacherReports(reports);
+      setClassTeacherAnalyses(analyses);
+      setProjectSaveState("dirty");
+      setUploadSummary(summary);
+      setStatus({
+        kind: summary.classes > 1 ? "warning" : "success",
+        text: summary.classes > 1 ? c("classTeacherMultiClassWarning") : c("classTeacherParsed"),
+      });
+      if (summary.classes === 1) {
+        window.setTimeout(() => setWorkflowStep("classTeacherReview"), 860);
+      }
+    } catch (error) {
+      console.error(error);
+      setUploadSummary(null);
+      setClassTeacherReports([]);
+      setClassTeacherAnalyses([]);
+      setStatus({ kind: "error", text: `${t("status.parseError")} ${error?.message || ""}`.trim() });
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function loadProjectFile(file) {
     setIsBusy(true);
     setUploadSummary(null);
     setStatus({ kind: "busy", text: t("status.loadingProject", { fileName: file.name }) });
     try {
       const payload = JSON.parse(await file.text());
+      if (payload?.mode === "klassenleraar") {
+        setAppModeState("klassenleraar");
+        throw new Error(t("status.classTeacherProjectUnsupported"));
+      }
       const restored = hydrateProjectPayload(payload, defaultFilters());
       const restoredWorkspaceKey = `${restored.model.fileName}::${restored.config.subject || restored.model.subjects?.[0]?.value || "subject"}`.toLowerCase();
       const nextAnalysis = calculateAnalysis(restored.model, restored.config);
+      setAppModeState("vakdocent");
+      setClassTeacherReports([]);
+      setClassTeacherAnalyses([]);
       setModel(restored.model);
       setConfig(restored.config);
       setAnalysis(nextAnalysis);
@@ -343,6 +532,73 @@ export default function App() {
       if (projectInputRef.current) projectInputRef.current.value = "";
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  function recomputeClassTeacherReview(nextReports, nextTrackOverrides = classTeacherTrackOverrides, nextSubjectOverrides = classTeacherSubjectOverrides) {
+    const nextAnalyses = calculateClassTeacherAnalysesFromReports(nextReports, nextTrackOverrides, nextSubjectOverrides);
+    setClassTeacherAnalyses(nextAnalyses);
+    setProjectSaveState("dirty");
+    return nextAnalyses;
+  }
+
+  function updateClassTeacherTrack(classCode, trackId) {
+    const nextOverrides = {
+      ...classTeacherTrackOverrides,
+      [classCode]: trackId,
+    };
+    setClassTeacherTrackOverrides(nextOverrides);
+    recomputeClassTeacherReview(classTeacherReports, nextOverrides, classTeacherSubjectOverrides);
+  }
+
+  function updateClassTeacherPeriod(fileName, periodId) {
+    const nextReports = classTeacherReports.map((report) => {
+      if (report.fileName !== fileName) return report;
+      const period = periodSchemaForYear(report.year)?.periods.find((item) => item.id === periodId);
+      if (!period) return report;
+      return {
+        ...report,
+        periodId: period.id,
+        periodLabel: period.label,
+      };
+    });
+    setClassTeacherReports(nextReports);
+    recomputeClassTeacherReview(nextReports);
+  }
+
+  function updateClassTeacherSubject(classCode, subject, targetSubject) {
+    const nextOverrides = {
+      ...classTeacherSubjectOverrides,
+      [classCode]: {
+        ...(classTeacherSubjectOverrides[classCode] || {}),
+        [subject]: targetSubject || "",
+      },
+    };
+    if (!targetSubject) delete nextOverrides[classCode][subject];
+    setClassTeacherSubjectOverrides(nextOverrides);
+    recomputeClassTeacherReview(classTeacherReports, classTeacherTrackOverrides, nextOverrides);
+  }
+
+  function confirmClassTeacherMapping() {
+    const blockingIssues = classTeacherBlockingIssues(classTeacherAnalyses);
+    if (blockingIssues.length) {
+      setStatus({ kind: "warning", text: c("classTeacherBlocked") });
+      return;
+    }
+    const current = classTeacherAnalyses[0];
+    const nextWorkspaceKey = `klassenleraar::${current?.classCode || "klas"}::${current?.periodSchemaId || "periodes"}`.toLowerCase();
+    setNotes(loadNotes(nextWorkspaceKey));
+    setFilters(defaultFilters());
+    setStatus({ kind: "success", text: c("classTeacherReviewReady") });
+    generationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    generationTimersRef.current = [];
+    setGenerationStep(0);
+    setWorkflowStep("classTeacherGenerating");
+    generationTimersRef.current.push(window.setTimeout(() => setGenerationStep(1), 260));
+    generationTimersRef.current.push(window.setTimeout(() => setGenerationStep(2), 540));
+    generationTimersRef.current.push(window.setTimeout(() => {
+      setGenerationStep(0);
+      setWorkflowStep("classTeacherDashboard");
+    }, 920));
   }
 
   function generateCards() {
@@ -383,6 +639,10 @@ export default function App() {
     setModel(null);
     setConfig(null);
     setAnalysis(null);
+    setClassTeacherReports([]);
+    setClassTeacherAnalyses([]);
+    setClassTeacherTrackOverrides({});
+    setClassTeacherSubjectOverrides({});
     setNotes({});
     setFilters(defaultFilters());
     setActiveTour(null);
@@ -571,6 +831,9 @@ export default function App() {
         <main className="app-main">
           {workflowStep === "upload" ? (
             <UploadScreen
+              c={c}
+              appMode={appMode}
+              onModeChange={changeAppMode}
               status={status}
               isBusy={isBusy}
               isDragging={isDragging}
@@ -579,6 +842,7 @@ export default function App() {
               projectInputRef={projectInputRef}
               uploadSummary={uploadSummary}
               onLoadWorkbook={loadWorkbook}
+              onLoadClassTeacherFiles={loadClassTeacherReports}
               onLoadProject={loadProjectFile}
             />
           ) : null}
@@ -591,6 +855,21 @@ export default function App() {
               status={status}
               onAssignmentChange={updateAssignment}
               onContinue={() => setWorkflowStep("map")}
+            />
+          ) : null}
+
+          {workflowStep === "classTeacherReview" && classTeacherAnalyses.length ? (
+            <ClassTeacherReviewScreen
+              c={c}
+              status={status}
+              reports={classTeacherReports}
+              analyses={classTeacherAnalyses}
+              trackOverrides={classTeacherTrackOverrides}
+              subjectOverrides={classTeacherSubjectOverrides}
+              onTrackChange={updateClassTeacherTrack}
+              onPeriodChange={updateClassTeacherPeriod}
+              onSubjectChange={updateClassTeacherSubject}
+              onConfirm={confirmClassTeacherMapping}
             />
           ) : null}
 
@@ -616,6 +895,10 @@ export default function App() {
             <GenerationScreen c={c} model={model} config={config} generationStep={generationStep} />
           ) : null}
 
+          {workflowStep === "classTeacherGenerating" && classTeacherAnalyses[0] ? (
+            <ClassTeacherGenerationScreen c={c} analysis={classTeacherAnalyses[0]} generationStep={generationStep} />
+          ) : null}
+
           {workflowStep === "dashboard" && analysis ? (
             <DashboardScreen
               c={c}
@@ -637,6 +920,23 @@ export default function App() {
               printStudentId={printStudentId}
               onEvaluationClick={setEvaluationDialog}
               onHistogramClick={setHistogramDialog}
+            />
+          ) : null}
+
+          {workflowStep === "classTeacherDashboard" && classTeacherAnalyses[0] ? (
+            <ClassTeacherDashboardScreen
+              c={c}
+              analysis={classTeacherAnalyses[0]}
+              anonymised={Boolean(preferences.anonymised)}
+              compactCards={compactCards}
+              notes={notes}
+              noteSaveStatus={noteSaveStatus}
+              onCompactCardsChange={(value) => persistPreferences({ compactCards: value })}
+              onNoteChange={updateNote}
+              onScrollToStudent={scrollToStudent}
+              onStartTour={startStudentTour}
+              onPrintStudent={printStudentCard}
+              printStudentId={printStudentId}
             />
           ) : null}
         </main>
@@ -717,7 +1017,273 @@ function AppHeader({ preferences, projectSaveState, onAnonymiseChange, onSavePro
   );
 }
 
+function buildClassTeacherUploadSummary(files, analyses) {
+  const classCodes = unique(analyses.map((analysis) => analysis.classCode));
+  const years = unique(analyses.map((analysis) => String(analysis.year || "")));
+  const tracks = unique(analyses.map((analysis) => analysis.track?.label || ""));
+  const warningCodes = unique(analyses.flatMap((analysis) => (
+    analysis.warnings || []
+  ).map((warning) => warning.code || warning.message || String(warning))));
+  const periodCount = analyses.reduce((sum, analysis) => sum + (analysis.totals?.periodCount || 0), 0);
+  const expectedPeriodCount = analyses.reduce((sum, analysis) => sum + (analysis.totals?.expectedPeriodCount || 0), 0);
+  const students = analyses.reduce((sum, analysis) => sum + (analysis.totals?.studentCount || 0), 0);
+  const subjects = analyses.reduce((sum, analysis) => sum + (analysis.totals?.subjectCount || 0), 0);
+  const keySubjects = analyses.reduce((sum, analysis) => sum + (analysis.totals?.keySubjectCount || 0), 0);
+
+  return {
+    mode: "klassenleraar",
+    fileName: files.map((file) => file.name).join(", "),
+    fileCount: files.length,
+    classCode: classCodes.join(", ") || t("option.notAvailable"),
+    classes: classCodes.length,
+    students,
+    subjects,
+    periodCount,
+    expectedPeriodCount,
+    periods: expectedPeriodCount ? `${periodCount}/${expectedPeriodCount}` : String(periodCount),
+    year: years.join(", ") || t("option.notAvailable"),
+    track: tracks.join(", ") || t("option.notAvailable"),
+    keySubjects,
+    warnings: warningCodes,
+  };
+}
+
+function calculateClassTeacherAnalysesFromReports(reports = [], trackOverrides = {}, subjectOverrides = {}) {
+  const mappedReports = reports.map((report) => applyClassTeacherSubjectOverridesToReport(
+    report,
+    subjectOverrides[report.classCode] || {},
+  ));
+  return aggregateClassTeacherReportGroups(mappedReports).map((aggregation) => {
+    const selectedTrack = trackById(trackOverrides[aggregation.classCode]) || aggregation.track;
+    return calculateClassTeacherAnalysis(applyClassTeacherTrackToAggregation(aggregation, selectedTrack));
+  });
+}
+
+function applyClassTeacherSubjectOverridesToReport(report, overrides = {}) {
+  const activeOverrides = Object.fromEntries(Object.entries(overrides).filter(([, target]) => target));
+  if (!Object.keys(activeOverrides).length) return report;
+  const rename = (subject) => activeOverrides[subject] || subject;
+  const isMapped = (subject) => Boolean(activeOverrides[subject]);
+
+  return {
+    ...report,
+    subjects: (report.subjects || []).map((subject) => ({
+      ...subject,
+      canonical: rename(subject.canonical),
+      known: subject.known || isMapped(subject.canonical) || isMapped(subject.raw),
+    })),
+    students: (report.students || []).map((student) => ({
+      ...student,
+      subjectScores: (student.subjectScores || []).map((score) => ({
+        ...score,
+        subject: rename(score.subject),
+        rawSubject: score.rawSubject || score.subject,
+      })),
+    })),
+    warnings: (report.warnings || []).filter((warning) => {
+      if (warning.code !== "unknown_subject") return true;
+      return !isMapped(warning.details?.subject) && !isMapped(warning.details?.canonical);
+    }),
+  };
+}
+
+function applyClassTeacherTrackToAggregation(aggregation, track) {
+  if (!track) return aggregation;
+  const keySubjects = new Set(track.keySubjects || []);
+  return {
+    ...aggregation,
+    track,
+    subjects: (aggregation.subjects || []).map((subject) => ({
+      ...subject,
+      isKeySubject: keySubjects.has(subject.subject),
+    })),
+    students: (aggregation.students || []).map((student) => ({
+      ...student,
+      periods: (student.periods || []).map((period) => ({
+        ...period,
+        subjectScores: Object.fromEntries(Object.entries(period.subjectScores || {}).map(([key, score]) => [
+          key,
+          {
+            ...score,
+            isKeySubject: keySubjects.has(score.subject || key),
+          },
+        ])),
+      })),
+      subjectLines: (student.subjectLines || []).map((line) => ({
+        ...line,
+        isKeySubject: keySubjects.has(line.subject),
+      })),
+    })),
+    totals: {
+      ...aggregation.totals,
+      keySubjectCount: (aggregation.subjects || []).filter((subject) => keySubjects.has(subject.subject)).length,
+    },
+  };
+}
+
+function classTeacherBlockingIssues(analyses = []) {
+  const issues = [];
+  if (!analyses.length) issues.push("Geen klasrapporten gevonden.");
+  if (analyses.length > 1) issues.push("De selectie bevat meerdere klasgroepen. Upload per klassenraad een klas tegelijk.");
+  for (const analysis of analyses) {
+    if (!analysis.classCode) issues.push("Geen klascode gevonden.");
+    if (!analysis.totals?.studentCount) issues.push(`${analysis.classCode || "Klas"} bevat geen leerlingen.`);
+    if (!analysis.totals?.periodCount) issues.push(`${analysis.classCode || "Klas"} bevat geen herkenbare periodes.`);
+    const duplicatePeriod = (analysis.warnings || []).find((warning) => warning.code === "duplicate_period_report");
+    if (duplicatePeriod) issues.push(`${analysis.classCode}: meerdere bestanden staan op dezelfde periode.`);
+  }
+  return unique(issues);
+}
+
+function classTeacherPolishNotices(analysis, c) {
+  if (!analysis) return [];
+  const notices = [];
+  if (!analysis.track?.id) {
+    notices.push({
+      id: "unknown-track",
+      title: c("classTeacherUnknownTrackTitle"),
+      body: c("classTeacherUnknownTrackBody"),
+    });
+  }
+  const expected = analysis.totals?.expectedPeriodCount || 0;
+  const available = analysis.totals?.periodCount || 0;
+  if (expected && available < expected) {
+    notices.push({
+      id: "missing-period",
+      title: c("classTeacherMissingPeriodTitle"),
+      body: c("classTeacherMissingPeriodBody", {
+        missing: expected - available,
+        expected,
+      }),
+    });
+  }
+  return notices;
+}
+
+function classTeacherSubjectOptions(analysis) {
+  const commonSubjects = [
+    "Aardrijkskunde",
+    "Biologie",
+    "Chemie",
+    "Design Thinking",
+    "Digiwiskunde",
+    "Duits",
+    "Economie",
+    "Engels",
+    "Frans",
+    "Fysica",
+    "Geschiedenis",
+    "Godsdienst",
+    "Grieks",
+    "ICT",
+    "Informaticawetenschappen",
+    "Latijn",
+    "Lichamelijke opvoeding",
+    "Muzikale opvoeding",
+    "Natuurwetenschappen",
+    "Nederlands",
+    "Spaans",
+    "Techniek",
+    "Wiskunde",
+  ];
+  return unique([
+    ...(analysis.subjects || []).filter((subject) => subject.known).map((subject) => subject.subject),
+    ...(analysis.track?.keySubjects || []),
+    ...commonSubjects,
+  ]);
+}
+
+function classTeacherDefaultSubjects(student, onlyKeySubjects = false) {
+  const lines = student.subjectLines || [];
+  const keySubjects = lines.filter((line) => line.isKeySubject).map((line) => line.subject);
+  if (keySubjects.length) return keySubjects.slice(0, onlyKeySubjects ? keySubjects.length : 7);
+  return lines.slice(0, onlyKeySubjects ? 0 : 6).map((line) => line.subject);
+}
+
+function normaliseSelectedClassTeacherSubjects(student, selectedSubjects = []) {
+  const available = new Set((student.subjectLines || []).map((line) => line.subject));
+  const selected = selectedSubjects.filter((subject) => available.has(subject));
+  if (selected.length) return selected;
+  return classTeacherDefaultSubjects(student);
+}
+
+function classTeacherFlagVariant(tone) {
+  if (tone === "critical") return "destructive";
+  if (tone === "caution" || tone === "warning") return "warning";
+  if (tone === "positive") return "success";
+  return "secondary";
+}
+
+function filterClassTeacherStudents(students = [], filters = {}) {
+  return students.filter((student) => {
+    if (filters.focus === "mainSubjectDanger" && !classTeacherHasMainSubjectDanger(student)) return false;
+    if (filters.focus === "below65" && (!Number.isFinite(student.finalWeighted) || student.finalWeighted >= 65)) return false;
+    if (filters.focus === "positive" && !student.flags?.some((flag) => flag.type === "positive_stable_profile")) return false;
+    if (filters.band && filters.band !== "all" && student.thresholdBand?.id !== filters.band) return false;
+    if (filters.subject && filters.subject !== "all" && !student.subjectLines?.some((line) => line.subject === filters.subject && Number.isFinite(scoreForClassTeacherLine(line)))) return false;
+    return true;
+  });
+}
+
+function sortClassTeacherStudents(students = [], filters = {}) {
+  const direction = filters.sortDirection === "desc" ? -1 : 1;
+  const sortKey = filters.sortKey || "name";
+  return [...students].sort((a, b) => {
+    let result = 0;
+    if (sortKey === "total") result = numericSortValue(a.finalWeighted) - numericSortValue(b.finalWeighted);
+    else if (sortKey === "trend") result = numericSortValue(a.overallTrend?.delta) - numericSortValue(b.overallTrend?.delta);
+    else if (sortKey === "flags") result = (a.flags?.length || 0) - (b.flags?.length || 0);
+    else if (sortKey === "mainSubjectDanger") result = classTeacherDangerSubjects(a).length - classTeacherDangerSubjects(b).length;
+    else result = a.name.localeCompare(b.name, undefined, { numeric: true });
+    return result === 0 ? a.name.localeCompare(b.name, undefined, { numeric: true }) : result * direction;
+  });
+}
+
+function summariseClassTeacherDisplayStudents(students = [], c = (key) => key) {
+  const values = students.map((student) => student.finalWeighted).filter(Number.isFinite);
+  const mean = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  const dangerCount = students.filter(classTeacherHasMainSubjectDanger).length;
+  return {
+    count: students.length,
+    mean,
+    dangerCount,
+    summary: `${students.length} ${t("detected.students").toLowerCase()}, ${t("dashboard.classAverage").toLowerCase()} ${formatNumber(mean)}%, ${dangerCount} ${c("classTeacherMainSubjectDanger").toLowerCase()}.`,
+  };
+}
+
+function classTeacherHasMainSubjectDanger(student) {
+  return classTeacherDangerSubjects(student).length > 0
+    || student.flags?.some((flag) => ["key_subject_critical", "multiple_key_subjects_weak", "track_mismatch_signal"].includes(flag.type));
+}
+
+function classTeacherDangerSubjects(student) {
+  const bySubject = new Map();
+  for (const item of student.keySubjectSummary?.below60 || []) bySubject.set(item.subject, item.score);
+  for (const item of student.keySubjectSummary?.below50 || []) bySubject.set(item.subject, item.score);
+  return Array.from(bySubject.entries())
+    .map(([subject, score]) => ({ subject, score }))
+    .sort((a, b) => a.score - b.score || a.subject.localeCompare(b.subject, undefined, { numeric: true }));
+}
+
+function classTeacherMainSubjectDangerLabel(student, c) {
+  const dangerSubjects = classTeacherDangerSubjects(student);
+  if (!dangerSubjects.length) return c("classTeacherNoMainSubjectDanger");
+  const visible = dangerSubjects.slice(0, 3).map((item) => `${item.subject} ${formatNumber(item.score)}%`).join(", ");
+  return dangerSubjects.length > 3 ? `${visible} +${dangerSubjects.length - 3}` : visible;
+}
+
+function scoreForClassTeacherLine(line) {
+  return Number.isFinite(line?.yearScore) ? line.yearScore : line?.latestScore;
+}
+
+function numericSortValue(value) {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
 function UploadScreen({
+  c,
+  appMode,
+  onModeChange,
   status,
   isBusy,
   isDragging,
@@ -726,17 +1292,27 @@ function UploadScreen({
   projectInputRef,
   uploadSummary,
   onLoadWorkbook,
+  onLoadClassTeacherFiles,
   onLoadProject,
 }) {
-  function handleIncomingFile(file) {
-    if (!file) return;
-    if (/\.json$/i.test(file.name)) onLoadProject(file);
-    else onLoadWorkbook(file, file.name);
+  const isClassTeacherMode = appMode === "klassenleraar";
+
+  function handleIncomingFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    if (files.length === 1 && /\.json$/i.test(files[0].name)) {
+      onLoadProject(files[0]);
+      return;
+    }
+    if (isClassTeacherMode) {
+      onLoadClassTeacherFiles(files);
+      return;
+    }
+    onLoadWorkbook(files[0], files[0].name);
   }
 
   function handleFileSelection(event) {
-    const [file] = event.target.files || [];
-    handleIncomingFile(file);
+    handleIncomingFiles(event.target.files);
     event.target.value = "";
   }
 
@@ -749,8 +1325,7 @@ function UploadScreen({
   function handleDrop(event) {
     event.preventDefault();
     setIsDragging(false);
-    const [file] = event.dataTransfer.files || [];
-    handleIncomingFile(file);
+    handleIncomingFiles(event.dataTransfer.files);
   }
 
   return (
@@ -767,6 +1342,20 @@ function UploadScreen({
           <p className="eyebrow">{t("app.brand")}</p>
           <h2>{t("upload.title")}</h2>
           <p>{t("upload.subtitle")}</p>
+          <div className="mode-toggle" aria-label={t("upload.roleLabel")}>
+            {APP_MODES.map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={cn("mode-choice", appMode === mode && "is-active")}
+                onClick={() => onModeChange(mode)}
+                aria-pressed={appMode === mode}
+              >
+                <span>{t(`upload.mode.${mode}`)}</span>
+                <small>{mode === "klassenleraar" ? c("roleHelpKlassenleraar") : c("roleHelpVakdocent")}</small>
+              </button>
+            ))}
+          </div>
         </div>
 
         <Card className={cn("upload-card", uploadSummary && "is-complete")}>
@@ -786,12 +1375,19 @@ function UploadScreen({
               }}
               onDrop={handleDrop}
             >
-              <input ref={fileInputRef} className="sr-only" type="file" accept=".xlsx,.xls,.json,application/json" onChange={handleFileSelection} />
+              <input
+                ref={fileInputRef}
+                className="sr-only"
+                type="file"
+                accept=".xlsx,.xls,.json,application/json"
+                multiple={isClassTeacherMode}
+                onChange={handleFileSelection}
+              />
               <span className="drop-zone-icon" aria-hidden="true">
                 {isBusy ? <Spinner /> : <UploadCloud size={30} />}
               </span>
-              <span className="drop-zone-title">{t("upload.dropTitle")}</span>
-              <span className="drop-zone-help">{t("upload.help")}</span>
+              <span className="drop-zone-title">{isClassTeacherMode ? t("upload.classTeacherDropTitle") : t("upload.dropTitle")}</span>
+              <span className="drop-zone-help">{isClassTeacherMode ? t("upload.classTeacherHelp") : t("upload.help")}</span>
             </button>
 
             {uploadSummary ? (
@@ -800,22 +1396,7 @@ function UploadScreen({
                   <ShieldCheck size={22} />
                 </div>
                 <div>
-                  <strong>{t("upload.detectedTitle")}</strong>
-                  <p>{t("upload.detectedHelp", { fileName: uploadSummary.fileName })}</p>
-                  <dl>
-                    <div>
-                      <dt>{t("detected.students")}</dt>
-                      <dd>{uploadSummary.students}</dd>
-                    </div>
-                    <div>
-                      <dt>{t("detected.classes")}</dt>
-                      <dd>{uploadSummary.classes}</dd>
-                    </div>
-                    <div>
-                      <dt>{t("detected.assignments")}</dt>
-                      <dd>{uploadSummary.assignments}</dd>
-                    </div>
-                  </dl>
+                  <UploadSummaryContent uploadSummary={uploadSummary} />
                 </div>
               </div>
             ) : null}
@@ -837,6 +1418,281 @@ function UploadScreen({
         </Card>
       </div>
     </section>
+  );
+}
+
+function UploadSummaryContent({ uploadSummary }) {
+  if (uploadSummary.mode === "klassenleraar") {
+    return (
+      <>
+        <strong>{t("upload.classTeacherDetectedTitle")}</strong>
+        <p>{t("upload.classTeacherDetectedHelp", {
+          fileCount: uploadSummary.fileCount,
+          classCode: uploadSummary.classCode,
+        })}</p>
+        <dl className="upload-summary-grid upload-summary-grid--class-teacher">
+          <div>
+            <dt>{t("detected.files")}</dt>
+            <dd>{uploadSummary.fileCount}</dd>
+          </div>
+          <div>
+            <dt>{t("detected.periods")}</dt>
+            <dd>{uploadSummary.periods}</dd>
+          </div>
+          <div>
+            <dt>{t("detected.students")}</dt>
+            <dd>{uploadSummary.students}</dd>
+          </div>
+          <div>
+            <dt>{t("detected.year")}</dt>
+            <dd>{uploadSummary.year}</dd>
+          </div>
+          <div>
+            <dt>{t("detected.track")}</dt>
+            <dd>{uploadSummary.track}</dd>
+          </div>
+          <div>
+            <dt>{t("detected.keySubjects")}</dt>
+            <dd>{uploadSummary.keySubjects}</dd>
+          </div>
+        </dl>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <strong>{t("upload.detectedTitle")}</strong>
+      <p>{t("upload.detectedHelp", { fileName: uploadSummary.fileName })}</p>
+      <dl className="upload-summary-grid">
+        <div>
+          <dt>{t("detected.students")}</dt>
+          <dd>{uploadSummary.students}</dd>
+        </div>
+        <div>
+          <dt>{t("detected.classes")}</dt>
+          <dd>{uploadSummary.classes}</dd>
+        </div>
+        <div>
+          <dt>{t("detected.assignments")}</dt>
+          <dd>{uploadSummary.assignments}</dd>
+        </div>
+      </dl>
+    </>
+  );
+}
+
+function ClassTeacherReviewScreen({
+  c,
+  status,
+  reports,
+  analyses,
+  trackOverrides,
+  subjectOverrides,
+  onTrackChange,
+  onPeriodChange,
+  onSubjectChange,
+  onConfirm,
+}) {
+  const blockingIssues = classTeacherBlockingIssues(analyses);
+  const primaryAnalysis = analyses[0];
+  const classesLabel = analyses.map((analysis) => analysis.classCode).join(", ");
+  const periodLabel = analyses.map((analysis) => `${analysis.totals.periodCount}/${analysis.totals.expectedPeriodCount}`).join(", ");
+  const studentCount = analyses.reduce((sum, analysis) => sum + analysis.totals.studentCount, 0);
+  const polishNotices = analyses.flatMap((analysis) => classTeacherPolishNotices(analysis, c));
+
+  return (
+    <section className="workflow-screen class-teacher-review-screen">
+      <FlowIndicator active="classTeacherReview" c={c} />
+      <div className="screen-heading">
+        <div>
+          <p className="eyebrow">{t("upload.mode.klassenleraar")}</p>
+          <h2>{c("classTeacherReviewTitle")}</h2>
+          <p>{c("classTeacherReviewBody")}</p>
+        </div>
+        <Button type="button" onClick={onConfirm} disabled={Boolean(blockingIssues.length)}>
+          <ArrowRight size={16} aria-hidden="true" />
+          {c("classTeacherConfirmMapping")}
+        </Button>
+      </div>
+
+      <div className="class-teacher-review-grid">
+        <Card className="review-overview-card">
+          <CardHeader>
+            <div>
+              <CardTitle>{classesLabel || t("option.notAvailable")}</CardTitle>
+              <CardDescription>{status.text}</CardDescription>
+            </div>
+            <CardAction>
+              <Badge variant={blockingIssues.length ? "warning" : "default"}>
+                {blockingIssues.length ? c("classTeacherBlocked") : t("detected.ready")}
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <div className="detected-grid">
+              <StatCard label={t("detected.files")} value={reports.length} compact />
+              <StatCard label={t("detected.periods")} value={periodLabel} compact />
+              <StatCard label={t("detected.students")} value={studentCount} compact />
+              <StatCard label={t("detected.subject")} value={primaryAnalysis?.totals?.subjectCount || 0} compact />
+            </div>
+            {blockingIssues.length ? (
+              <ul className="class-teacher-issue-list">
+                {blockingIssues.map((issue) => <li key={issue}>{issue}</li>)}
+              </ul>
+            ) : null}
+            {polishNotices.length ? <ClassTeacherNoticeList notices={polishNotices} /> : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("detected.track")}</CardTitle>
+            <CardDescription>{c("classTeacherTrackHelp")}</CardDescription>
+          </CardHeader>
+          <CardContent className="class-teacher-stack">
+            {analyses.map((analysis) => {
+              const options = trackOptionsForYear(analysis.year);
+              const selectedTrackId = trackOverrides[analysis.classCode] || analysis.track?.id || "";
+              const selectedTrack = trackById(selectedTrackId) || analysis.track;
+              return (
+                <div className="track-review-row" key={analysis.classCode}>
+                  <div>
+                    <strong>{analysis.classCode}</strong>
+                    <p>{t("detected.year")} {analysis.year || t("option.notAvailable")}</p>
+                  </div>
+                  <Select value={selectedTrackId} onChange={(event) => onTrackChange(analysis.classCode, event.target.value)}>
+                    <option value="">{t("option.notAvailable")}</option>
+                    {options.map((option) => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                  </Select>
+                  <div className="key-subject-list" aria-label={t("detected.keySubjects")}>
+                    {(selectedTrack?.keySubjects || []).map((subject) => <Badge key={subject}>{subject}</Badge>)}
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        <Card className="class-teacher-wide-card">
+          <CardHeader>
+            <CardTitle>{t("detected.files")}</CardTitle>
+            <CardDescription>{t("review.tableHelp")}</CardDescription>
+          </CardHeader>
+          <CardContent className="table-scroll">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("detected.classes")}</TableHead>
+                  <TableHead>{t("detected.workbook")}</TableHead>
+                  <TableHead>{t("detected.periods")}</TableHead>
+                  <TableHead>{t("detected.students")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reports.map((report) => {
+                  const periods = periodSchemaForYear(report.year)?.periods || [];
+                  return (
+                    <TableRow key={report.fileName}>
+                      <TableCell>{report.classCode}</TableCell>
+                      <TableCell>{report.fileName}</TableCell>
+                      <TableCell>
+                        <Select value={report.periodId || ""} onChange={(event) => onPeriodChange(report.fileName, event.target.value)}>
+                          <option value="">{t("option.notAvailable")}</option>
+                          {periods.map((period) => (
+                            <option key={period.id} value={period.id}>{period.label}</option>
+                          ))}
+                        </Select>
+                      </TableCell>
+                      <TableCell>{report.totals.studentCount}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("detected.subject")}</CardTitle>
+            <CardDescription>{c("classTeacherSubjectHelp")}</CardDescription>
+          </CardHeader>
+          <CardContent className="class-teacher-stack">
+            {analyses.map((analysis) => {
+              const unknownSubjects = analysis.subjects.filter((subject) => !subject.known);
+              const subjectOptions = classTeacherSubjectOptions(analysis);
+              if (!unknownSubjects.length) {
+                return <p className="muted" key={analysis.classCode}>{analysis.classCode}: {t("review.suggestedEmpty")}</p>;
+              }
+              return unknownSubjects.slice(0, 8).map((subject) => (
+                <div className="subject-alias-row" key={`${analysis.classCode}-${subject.subject}`}>
+                  <div>
+                    <strong>{subject.subject}</strong>
+                    <p>{analysis.classCode}</p>
+                  </div>
+                  <Select
+                    value={subjectOverrides[analysis.classCode]?.[subject.subject] || ""}
+                    onChange={(event) => onSubjectChange(analysis.classCode, subject.subject, event.target.value)}
+                  >
+                    <option value="">{t("option.none")}</option>
+                    {subjectOptions.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </Select>
+                </div>
+              ));
+            })}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("detected.students")}</CardTitle>
+            <CardDescription>{c("classTeacherStudentsHelp")}</CardDescription>
+          </CardHeader>
+          <CardContent className="table-scroll">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("student.student")}</TableHead>
+                  <TableHead>{t("detected.periods")}</TableHead>
+                  <TableHead>{t("student.total")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(primaryAnalysis?.students || []).slice(0, 8).map((student) => (
+                  <TableRow key={student.id}>
+                    <TableCell>{student.name}</TableCell>
+                    <TableCell>{student.periods.filter((period) => !period.missing).length}/{primaryAnalysis.periods.filter((period) => !period.missing).length}</TableCell>
+                    <TableCell>{formatNumber(student.finalWeighted)}%</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
+function ClassTeacherNoticeList({ notices }) {
+  if (!notices.length) return null;
+  return (
+    <div className="class-teacher-notice-list">
+      {notices.map((notice) => (
+        <div className="class-teacher-notice" key={notice.id}>
+          <ShieldCheck size={17} aria-hidden="true" />
+          <div>
+            <strong>{notice.title}</strong>
+            <p>{notice.body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1131,6 +1987,46 @@ function GenerationScreen({ c, model, config, generationStep }) {
   );
 }
 
+function ClassTeacherGenerationScreen({ c, analysis, generationStep }) {
+  const steps = [
+    { key: "reports", title: c("classTeacherGeneratingReports"), body: `${analysis.totals.periodCount}/${analysis.totals.expectedPeriodCount} ${t("detected.periods").toLowerCase()}` },
+    { key: "subjects", title: c("classTeacherGeneratingSubjects"), body: `${analysis.totals.subjectCount} ${t("detected.subject").toLowerCase()}` },
+    { key: "cards", title: c("classTeacherGeneratingCards"), body: `${analysis.totals.studentCount} ${t("detected.students").toLowerCase()}` },
+  ];
+
+  return (
+    <section className="workflow-screen generation-screen class-teacher-generation-screen">
+      <FlowIndicator active="classTeacherGenerating" c={c} />
+      <div className="generation-shell class-teacher-generation-shell">
+        <div className="generation-copy">
+          <p className="eyebrow">{t("upload.mode.klassenleraar")}</p>
+          <h2>{c("classTeacherGeneratingTitle")}</h2>
+          <p>{c("classTeacherGeneratingBody", {
+            students: analysis.totals.studentCount,
+            subjects: analysis.totals.subjectCount,
+            periods: analysis.totals.periodCount,
+          })}</p>
+        </div>
+        <div className="generation-steps" aria-live="polite">
+          {steps.map((step, index) => {
+            const isComplete = index < generationStep;
+            const isActive = index === generationStep;
+            return (
+              <div key={step.key} className={cn("generation-step", isComplete && "is-complete", isActive && "is-active")}>
+                <span>{isComplete ? "OK" : index + 1}</span>
+                <div>
+                  <strong>{step.title}</strong>
+                  <p>{step.body}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DashboardScreen({
   c,
   analysis,
@@ -1278,6 +2174,538 @@ function DashboardScreen({
   );
 }
 
+function ClassTeacherDashboardScreen({
+  c,
+  analysis,
+  anonymised,
+  compactCards,
+  notes,
+  noteSaveStatus,
+  onCompactCardsChange,
+  onNoteChange,
+  onScrollToStudent,
+  onStartTour,
+  onPrintStudent,
+  printStudentId,
+}) {
+  const students = [...analysis.students].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const [dashboardFilters, setDashboardFilters] = useState({
+    focus: "all",
+    band: "all",
+    subject: "all",
+    sortKey: "name",
+    sortDirection: "asc",
+  });
+  const subjectOptions = useMemo(() => unique((analysis.subjects || []).map((subject) => subject.subject)), [analysis.subjects]);
+  const filteredStudents = useMemo(() => (
+    sortClassTeacherStudents(filterClassTeacherStudents(students, dashboardFilters), dashboardFilters)
+  ), [dashboardFilters, students]);
+  const stats = analysis.stats || {};
+  const mainSubjectDangerStudents = students.filter(classTeacherHasMainSubjectDanger);
+  const keyRiskCount = stats.keyRiskCount || mainSubjectDangerStudents.length;
+  const filteredStats = summariseClassTeacherDisplayStudents(filteredStudents, c);
+  const polishNotices = classTeacherPolishNotices(analysis, c);
+  const updateDashboardFilters = (patch) => setDashboardFilters((current) => ({ ...current, ...patch }));
+
+  return (
+    <section className="workflow-screen dashboard-screen class-teacher-dashboard-screen">
+      <FlowIndicator active="classTeacherDashboard" c={c} />
+      <div className="dashboard-header">
+        <div className="screen-heading">
+          <div>
+            <p className="eyebrow">{t("upload.mode.klassenleraar")}</p>
+            <h2>{c("classTeacherDashboardTitle")}: {analysis.classCode}</h2>
+            <p>{c("classTeacherDashboardBody")}</p>
+          </div>
+          <Badge variant="secondary">{analysis.track?.label || t("option.notAvailable")}</Badge>
+        </div>
+
+        <div className="stats-grid">
+          <StatCard label={t("detected.students")} value={stats.count || students.length} />
+          <StatCard label={t("dashboard.classAverage")} value={`${formatNumber(stats.mean)}%`} />
+          <StatCard label={c("classTeacherMainSubjectDanger")} value={keyRiskCount} />
+          <StatCard label={c("classTeacherVisibleStudents")} value={filteredStudents.length} />
+        </div>
+
+        {polishNotices.length ? <ClassTeacherNoticeList notices={polishNotices} /> : null}
+
+        <ClassTeacherDashboardFilters
+          c={c}
+          filters={dashboardFilters}
+          subjectOptions={subjectOptions}
+          counts={{
+            all: students.length,
+            mainSubjectDanger: mainSubjectDangerStudents.length,
+            below65: students.filter((student) => Number.isFinite(student.finalWeighted) && student.finalWeighted < 65).length,
+            positive: students.filter((student) => student.flags?.some((flag) => flag.type === "positive_stable_profile")).length,
+          }}
+          onChange={updateDashboardFilters}
+        />
+      </div>
+
+      <div className="overview-grid">
+        <Card className="chart-panel">
+          <CardHeader>
+            <CardTitle>{t("chart.histogramTitle")}</CardTitle>
+            <CardDescription>{filteredStats.summary}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Histogram students={filteredStudents} anonymised={anonymised} />
+          </CardContent>
+        </Card>
+        <Card className="students-panel">
+          <CardHeader>
+            <CardTitle>{t("student.tableTitle")}</CardTitle>
+            <CardDescription>{t("student.openCard")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ClassTeacherStudentTable
+              c={c}
+              students={filteredStudents}
+              anonymised={anonymised}
+              filters={dashboardFilters}
+              onFiltersChange={updateDashboardFilters}
+              onOpen={onScrollToStudent}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="cards-heading">
+        <div>
+          <h3>{t("student.cardsTitle")}</h3>
+          <span>{filteredStudents.length} {t("detected.students").toLowerCase()}</span>
+        </div>
+        <Button variant="outline" size="sm" type="button" onClick={() => onCompactCardsChange(!compactCards)}>
+          {compactCards ? <Maximize2 size={15} aria-hidden="true" /> : <Minimize2 size={15} aria-hidden="true" />}
+          {compactCards ? t("dashboard.roomyCards") : t("dashboard.compactCards")}
+        </Button>
+      </div>
+
+      <div className={cn("student-cards", "class-teacher-student-cards", compactCards && "student-cards--compact")}>
+        {filteredStudents.length ? filteredStudents.map((student, index) => (
+          <ClassTeacherStudentCard
+            key={student.id}
+            c={c}
+            student={student}
+            analysis={analysis}
+            peers={filteredStudents}
+            anonymised={anonymised}
+            displayIndex={index}
+            compact={compactCards}
+            note={notes[student.id] || ""}
+            noteStatus={noteSaveStatus[student.id] || "idle"}
+            onNoteChange={onNoteChange}
+            onScrollToStudent={onScrollToStudent}
+            onStartTour={onStartTour}
+            onPrintStudent={onPrintStudent}
+            isPrintTarget={printStudentId === student.id}
+          />
+        )) : <EmptyState />}
+      </div>
+    </section>
+  );
+}
+
+function ClassTeacherDashboardFilters({ c, filters, subjectOptions, counts, onChange }) {
+  const focusItems = [
+    { id: "all", label: c("classTeacherFilterAll"), count: counts.all },
+    { id: "mainSubjectDanger", label: c("classTeacherShowMainSubjectDanger"), count: counts.mainSubjectDanger },
+    { id: "below65", label: c("classTeacherBelow65"), count: counts.below65 },
+    { id: "positive", label: c("classTeacherPositiveProfiles"), count: counts.positive },
+  ];
+  return (
+    <div className="class-teacher-dashboard-filters" aria-label={t("filter.label")}>
+      <div className="class-teacher-quick-filters">
+        {focusItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={cn("quick-filter-pill", filters.focus === item.id && "is-active")}
+            onClick={() => onChange({ focus: item.id })}
+          >
+            <span>{item.label}</span>
+            <strong>{item.count}</strong>
+          </button>
+        ))}
+      </div>
+      <div className="filters">
+        <Select value={filters.band} onChange={(event) => onChange({ band: event.target.value })} aria-label={t("filter.allBands")}>
+          <option value="all">{t("filter.allBands")}</option>
+          {THRESHOLD_BANDS.map((band) => (
+            <option key={band.id} value={band.id}>{t(`band.${band.id}`)}</option>
+          ))}
+        </Select>
+        <Select value={filters.subject} onChange={(event) => onChange({ subject: event.target.value })} aria-label={c("classTeacherSubjectFilter")}>
+          <option value="all">{c("classTeacherSubjectFilter")}</option>
+          {subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+        </Select>
+        <Button variant="outline" type="button" onClick={() => onChange({ focus: "all", band: "all", subject: "all" })}>
+          {t("filter.clear")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ClassTeacherStudentTable({ c, students, anonymised, filters, onFiltersChange, onOpen }) {
+  return (
+    <Table className="student-table class-teacher-student-table">
+      <TableHeader>
+        <TableRow>
+          <SortHeader field="name" label={t("student.student")} filters={filters} onFiltersChange={onFiltersChange} />
+          <SortHeader field="total" label={t("student.total")} filters={filters} onFiltersChange={onFiltersChange} align="right" />
+          <SortHeader field="trend" label={t("student.trend")} filters={filters} onFiltersChange={onFiltersChange} />
+          <SortHeader field="mainSubjectDanger" label={c("classTeacherMainSubjectDanger")} filters={filters} onFiltersChange={onFiltersChange} />
+          <SortHeader field="flags" label={t("student.flags")} filters={filters} onFiltersChange={onFiltersChange} align="right" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {students.map((student, index) => (
+          <TableRow
+            key={student.id}
+            className="student-table-row"
+            tabIndex={0}
+            onClick={() => onOpen(student.id)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onOpen(student.id);
+              }
+            }}
+          >
+            <TableCell>
+              <span className="student-table-name">
+                <span>{anonymised ? t("student.anonymous", { number: String(index + 1).padStart(2, "0") }) : student.name}</span>
+                <ArrowRight size={15} aria-hidden="true" />
+              </span>
+            </TableCell>
+            <TableCell className="table-cell-numeric">{formatGrade(student.finalWeighted)}</TableCell>
+            <TableCell>{translateTrend(student.overallTrend?.direction || "insufficient")}</TableCell>
+            <TableCell>{classTeacherMainSubjectDangerLabel(student, c)}</TableCell>
+            <TableCell className="table-cell-numeric">{student.flags?.length || 0}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function ClassTeacherStudentCard({
+  c,
+  student,
+  analysis,
+  peers,
+  anonymised,
+  displayIndex,
+  compact,
+  note,
+  noteStatus,
+  onNoteChange,
+  onScrollToStudent,
+  onStartTour,
+  onPrintStudent,
+  isPrintTarget,
+}) {
+  const displayName = anonymised ? t("student.anonymous", { number: String(displayIndex + 1).padStart(2, "0") }) : student.name;
+  const peerIndex = peers.findIndex((peer) => peer.id === student.id);
+  const previousPeer = peerIndex > 0 ? peers[peerIndex - 1] : null;
+  const nextPeer = peerIndex >= 0 && peerIndex < peers.length - 1 ? peers[peerIndex + 1] : null;
+  const defaultSubjects = classTeacherDefaultSubjects(student);
+  const [selectedSubjects, setSelectedSubjects] = useState(defaultSubjects);
+  const visibleSubjects = normaliseSelectedClassTeacherSubjects(student, selectedSubjects);
+
+  function toggleSubject(subject) {
+    setSelectedSubjects((current) => {
+      if (current.includes(subject)) return current.filter((item) => item !== subject);
+      return [...current, subject];
+    });
+  }
+
+  function showKeySubjects() {
+    setSelectedSubjects(classTeacherDefaultSubjects(student, true));
+  }
+
+  function showAllSubjects() {
+    setSelectedSubjects((student.subjectLines || []).map((line) => line.subject));
+  }
+
+  return (
+    <Card className={cn("student-card", "class-teacher-student-card", compact && "student-card--compact", isPrintTarget && "is-print-target")} id={`student-card-${student.id}`} data-student-id={student.id}>
+      <CardHeader className="student-card-header" data-tour-part="total">
+        <div>
+          <CardTitle className="student-title">{displayName}</CardTitle>
+          <div className="student-meta">
+            <Badge variant="outline">{student.classCode}</Badge>
+            <Badge variant="outline">{analysis.track?.label || t("option.notAvailable")}</Badge>
+            <Badge variant="secondary">{formatGrade(student.finalWeighted)}</Badge>
+          </div>
+        </div>
+        <CardAction className="student-actions">
+          <nav className="student-nav" aria-label={t("student.navLabel")}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label={t("student.backToOverview")}>
+                  <ArrowUp size={17} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("student.backToOverview")}</TooltipContent>
+            </Tooltip>
+            {previousPeer ? (
+              <Button variant="ghost" size="icon" type="button" onClick={() => onScrollToStudent(previousPeer.id)} aria-label={t("student.previousInClass")}>
+                <ChevronLeft size={17} aria-hidden="true" />
+              </Button>
+            ) : null}
+            {nextPeer ? (
+              <Button variant="ghost" size="icon" type="button" onClick={() => onScrollToStudent(nextPeer.id)} aria-label={t("student.nextInClass")}>
+                <ChevronRight size={17} aria-hidden="true" />
+              </Button>
+            ) : null}
+          </nav>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" type="button" onClick={() => onPrintStudent(student.id)} aria-label={t("student.printCard")}>
+                <Printer size={17} aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("student.printCard")}</TooltipContent>
+          </Tooltip>
+          <Button variant="outline" type="button" onClick={() => onStartTour(student.id)}>{t("tour.button")}</Button>
+          <div className={cn("grade-badge", student.thresholdBand?.className)}>{formatGrade(student.finalWeighted)}</div>
+        </CardAction>
+      </CardHeader>
+
+      <CardContent>
+        <section className="card-section class-teacher-card-intro">
+          <p>{c("classTeacherCardIntro")}</p>
+        </section>
+
+        <section className="card-section card-section--graph class-teacher-lines-section" data-tour-part="graph">
+          <div className="section-row graph-section-heading">
+            <h4>{t("student.visualContext")}</h4>
+            <span>{c("classTeacherOverallLine")} + {c("classTeacherSubjectLines").toLowerCase()}</span>
+          </div>
+          <ClassTeacherSubjectPicker
+            c={c}
+            student={student}
+            selectedSubjects={visibleSubjects}
+            onToggle={toggleSubject}
+            onKeySubjects={showKeySubjects}
+            onAllSubjects={showAllSubjects}
+          />
+          <p className="class-teacher-graph-hint">{c("classTeacherGraphHint")}</p>
+          <ClassTeacherLinesChart c={c} student={student} periods={analysis.periods} selectedSubjects={visibleSubjects} />
+        </section>
+
+        <section className="card-section card-section--summary" data-tour-part="advice">
+          <div className="advice-summary">
+            <strong>{t("advice.summaryTitle")}</strong>
+            <p>{student.flags?.[0]?.label || c("classTeacherNoSignals")}</p>
+            <p>{student.flags?.[0]?.detail || c("classTeacherCardIntro")}</p>
+          </div>
+          {student.flags?.length ? (
+            <div className="flag-detail-list">
+              {student.flags.map((flag, index) => (
+                <div className="flag-detail-row" key={`${flag.type}-${index}`}>
+                  <Badge variant={classTeacherFlagVariant(flag.tone)}>{flag.label}</Badge>
+                  <p>{flag.detail}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="card-section class-teacher-subject-matrix" data-tour-part="table">
+          <div className="section-row">
+            <h4>{c("classTeacherSubjectMatrix")}</h4>
+            <span>{analysis.track?.label || ""}</span>
+          </div>
+          <ClassTeacherSubjectMatrix c={c} student={student} periods={analysis.periods} />
+        </section>
+
+        <section className="card-section notes-section" data-tour-part="notes">
+          <div className="section-row notes-heading">
+            <h4>{t("student.teacherJudgement")}</h4>
+            <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
+              {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
+            </span>
+          </div>
+          <Textarea
+            value={note}
+            onChange={(event) => onNoteChange(student.id, event.target.value)}
+            placeholder={t("student.teacherPlaceholder")}
+          />
+        </section>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ClassTeacherSubjectPicker({ c, student, selectedSubjects, onToggle, onKeySubjects, onAllSubjects }) {
+  const subjects = student.subjectLines || [];
+  return (
+    <details className="class-teacher-subject-picker">
+      <summary>
+        <span>{c("classTeacherSubjectPicker")}</span>
+        <Badge>{selectedSubjects.length}</Badge>
+      </summary>
+      <div className="class-teacher-subject-picker-body">
+        <div className="subject-picker-actions">
+          <Button variant="outline" size="sm" type="button" onClick={onKeySubjects}>{c("classTeacherKeySubjectsOnly")}</Button>
+          <Button variant="outline" size="sm" type="button" onClick={onAllSubjects}>{c("classTeacherAllSubjects")}</Button>
+        </div>
+        <div className="subject-checkbox-grid">
+          {subjects.map((line) => (
+            <label key={line.subject} className={cn("subject-checkbox", line.isKeySubject && "is-key-subject")}>
+              <input type="checkbox" checked={selectedSubjects.includes(line.subject)} onChange={() => onToggle(line.subject)} />
+              <span>{line.subject}</span>
+              {line.isKeySubject ? <small>{c("classTeacherKeySubject")}</small> : null}
+            </label>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function ClassTeacherLinesChart({ c, student, periods, selectedSubjects }) {
+  const width = 760;
+  const height = 252;
+  const left = 48;
+  const right = 24;
+  const top = 28;
+  const bottom = 194;
+  const axisWidth = width - left - right;
+  const axisHeight = bottom - top;
+  const periodList = periods || [];
+  const xForIndex = (index) => left + (periodList.length <= 1 ? 0 : (index / (periodList.length - 1)) * axisWidth);
+  const yFor = (value) => bottom - (clamp(value, 0, 100) / 100) * axisHeight;
+  const subjectLines = (student.subjectLines || []).filter((line) => selectedSubjects.includes(line.subject));
+  const overallPoints = (student.overallTrend?.points || []).map((point) => ({
+    subject: c("classTeacherOverallLine"),
+    periodId: point.periodId,
+    periodLabel: point.periodLabel,
+    value: point.value,
+    isOverall: true,
+  }));
+
+  return (
+    <figure className="class-teacher-lines-chart">
+      <svg className="chart-svg chart-svg--interactive" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("chart.yearTrend")}>
+        <line x1={left} y1={top} x2={left} y2={bottom} stroke="var(--chart-axis)" />
+        <line x1={left} y1={bottom} x2={width - right} y2={bottom} stroke="var(--chart-axis)" />
+        {[0, 25, 50, 75, 100].map((value) => (
+          <g key={value}>
+            <line x1={left - 4} y1={yFor(value)} x2={width - right} y2={yFor(value)} stroke="var(--chart-grid)" />
+            <text x="10" y={yFor(value) + 4}>{value}%</text>
+          </g>
+        ))}
+        {periodList.map((period, index) => (
+          <g key={period.id}>
+            <line className="class-teacher-period-line" x1={xForIndex(index)} y1={top} x2={xForIndex(index)} y2={bottom} />
+            <text className="axis-label" x={xForIndex(index)} y={bottom + 28} textAnchor="middle">{shortLabel(period.label, 16)}</text>
+          </g>
+        ))}
+        {subjectLines.map((line, index) => (
+          <ClassTeacherLinePath
+            key={line.subject}
+            line={line}
+            periods={periodList}
+            color={CLASS_TEACHER_LINE_COLORS[index % CLASS_TEACHER_LINE_COLORS.length]}
+            xForIndex={xForIndex}
+            yFor={yFor}
+            muted
+          />
+        ))}
+        <ClassTeacherLinePath
+          line={{ subject: c("classTeacherOverallLine"), points: overallPoints }}
+          periods={periodList}
+          color="#5200FF"
+          xForIndex={xForIndex}
+          yFor={yFor}
+          overall
+        />
+      </svg>
+      <figcaption className="class-teacher-chart-legend">
+        <span><i style={{ background: "#5200FF" }} />{c("classTeacherOverallLine")}</span>
+        <span><i />{selectedSubjects.length} {c("classTeacherSubjectLines").toLowerCase()}</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+function ClassTeacherLinePath({ line, periods, color, xForIndex, yFor, overall = false, muted = false }) {
+  const points = periods.map((period, index) => {
+    const point = (line.points || []).find((item) => item.periodId === period.id);
+    return {
+      ...point,
+      index,
+      periodLabel: point?.periodLabel || period.label,
+      value: point?.value,
+    };
+  }).filter((point) => Number.isFinite(point.value));
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${xForIndex(point.index)} ${yFor(point.value)}`).join(" ");
+  if (!points.length) return null;
+  return (
+    <g className={cn("class-teacher-line-group", overall && "is-overall", muted && "is-muted-line")}>
+      {points.length > 1 ? <path d={path} fill="none" stroke={color} /> : null}
+      {points.map((point) => {
+        const x = xForIndex(point.index);
+        const y = yFor(point.value);
+        const label = `${line.subject} - ${point.periodLabel}: ${formatNumber(point.value)}%`;
+        return (
+          <g
+            key={`${line.subject}-${point.periodId}`}
+            className="class-teacher-line-dot"
+            transform={`translate(${x}, ${y})`}
+            tabIndex={0}
+            role="button"
+            aria-label={label}
+          >
+            <text className="chart-svg-tooltip class-teacher-line-label" x="0" y="-14" textAnchor="middle">
+              {shortLabel(`${line.subject}: ${formatNumber(point.value)}%`, 34)}
+            </text>
+            <title>{label}</title>
+            <circle cx="0" cy="0" r={overall ? 6 : 4.5} fill={color} />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function ClassTeacherSubjectMatrix({ c, student, periods }) {
+  const periodIds = (periods || []).map((period) => period.id);
+  return (
+    <div className="table-scroll">
+      <Table className="class-teacher-subject-matrix-table">
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t("detected.subject")}</TableHead>
+            {periods.map((period) => <TableHead key={period.id}>{shortLabel(period.label, 12)}</TableHead>)}
+            <TableHead>{t("student.total")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {(student.subjectLines || []).map((line) => (
+            <TableRow key={line.subject} className={line.isKeySubject ? "is-key-subject-row" : ""}>
+              <TableCell>
+                <strong>{line.subject}</strong>
+                {line.isKeySubject ? <small>{c("classTeacherKeySubject")}</small> : null}
+              </TableCell>
+              {periodIds.map((periodId) => {
+                const point = line.points.find((item) => item.periodId === periodId);
+                return <TableCell key={periodId}>{Number.isFinite(point?.value) ? `${formatNumber(point.value)}%` : t("option.notAvailable")}</TableCell>;
+              })}
+              <TableCell>{Number.isFinite(line.yearScore) ? `${formatNumber(line.yearScore)}%` : formatGrade(line.latestScore)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function SetupProgressRail() {
   const steps = [
     { number: 1, title: t("mapping.stepCourse"), body: t("mapping.railCourse") },
@@ -1301,12 +2729,19 @@ function SetupProgressRail() {
 }
 
 function FlowIndicator({ active, c }) {
-  const steps = [
-    ["upload", c("uploadFlow")],
-    ["review", c("reviewFlow")],
-    ["map", c("mapFlow")],
-    ["dashboard", c("dashboardFlow")],
-  ];
+  const steps = active === "classTeacherReview" || active === "classTeacherGenerating" || active === "classTeacherDashboard"
+    ? [
+        ["upload", c("uploadFlow")],
+        ["classTeacherReview", c("classTeacherReviewFlow")],
+        ["classTeacherGenerating", c("classTeacherGenerateFlow")],
+        ["classTeacherDashboard", c("dashboardFlow")],
+      ]
+    : [
+        ["upload", c("uploadFlow")],
+        ["review", c("reviewFlow")],
+        ["map", c("mapFlow")],
+        ["dashboard", c("dashboardFlow")],
+      ];
   const activeIndex = steps.findIndex(([id]) => id === active);
   return (
     <ol className="flow-indicator" aria-label="Workflow">
