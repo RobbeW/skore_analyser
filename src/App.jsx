@@ -3429,29 +3429,20 @@ function StudentCard({
             </Accordion>
           </section>
 
-          <section className="card-section print-optional compact-detail-section">
-            <Accordion
-              type="single"
-              collapsible
-              value={sectionOpen.comments ? "comments" : ""}
-              onValueChange={(value) => onSectionOpenChange?.("comments", value === "comments")}
-            >
-              <AccordionItem value="comments">
-                <AccordionTrigger>{t("student.comments")}</AccordionTrigger>
-                <AccordionContent>
-                  {student.comments.length ? (
-                    <ul className="comment-list">
-                      {student.comments.map((comment, index) => (
-                        <li key={`${comment.source}-${comment.field}-${index}`}>
-                          <strong>{comment.source} - {comment.field}</strong>
-                          {comment.text}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : <p className="muted">{t("student.noComments")}</p>}
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+          <section className="card-section print-optional compact-detail-section comments-static-section">
+            <div className="section-row">
+              <h4>{t("student.comments")}</h4>
+            </div>
+            {student.comments.length ? (
+              <ul className="comment-list">
+                {student.comments.map((comment, index) => (
+                  <li key={`${comment.source}-${comment.field}-${index}`}>
+                    <strong>{comment.source} - {comment.field}</strong>
+                    {comment.text}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="muted">{t("student.noComments")}</p>}
           </section>
         </div>
       </CardContent>
