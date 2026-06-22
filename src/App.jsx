@@ -3899,7 +3899,6 @@ function EvaluationDialog({ c, data, onOpenChange }) {
               value={Number.isFinite(point.earned) && Number.isFinite(point.maxPoints) ? `${formatNumber(point.earned)} / ${formatNumber(point.maxPoints)}` : c("noScore")}
               compact
             />
-            <StatCard label={t("mapping.category")} value={assignment?.category || point.category || ""} compact />
             <StatCard label={t("mapping.max")} value={assignment?.maxPoints ?? score?.maxPoints ?? point.maxPoints ?? ""} compact />
             {point.usage === "displayOnly" ? (
               <p className="context-evaluation-note">
