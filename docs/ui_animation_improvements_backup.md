@@ -4,6 +4,28 @@ Date: 2026-06-18
 
 This document captures UI, interaction, and animation improvements for future design sprints. It is based on the current React/shadcn-style MVP, the existing CSS motion system, the teacher onboarding notes, and the latest product feedback.
 
+## 2026-06-22 Klassenleraar UI Pass
+
+Implemented in this pass:
+
+- Fixed review-card header overlap by making klassenleraar review card headers single-column where title and help text are siblings.
+- Added school-specific subject aliases, including `Esth`, `Godsd`, `SMS`, `SAV`, `SFV`, `SICT`, `AIDT`, `DEC`, `NatWe`, `PMS`, and `TE`.
+- Replaced visible `Sleutelvak` terminology with `Hoofdvak` in the klassenleraar UI.
+- Simplified the klassenleraar histogram panel to `Histogram` and connected bar clicks to the student-name dialog.
+- Removed the intro sentence and graph chip from klassenleraar student cards.
+- Reduced duplicated warning copy by turning repeated hoofdvak flags into one summary that also lists non-hoofdvak subjects in alarm zones.
+- Added a visible dotted trendline and `0-100`/`Inzoomen` scale toggle to the klassenleraar multi-line graph.
+- Fixed klassenleraar JSON backup save/import.
+- Added reduced-motion coverage for new klassenleraar animations.
+- Added `griek` and `SEAL` subject recognition, removed the klassenleraar compact-card toggle, and split the rondleiding copy so klassenleraar cards explain vaklijnen, hoofdvakken, samenvatting, and klassenraadnotities instead of vakdocent score baskets.
+- Removed the vakdocent compact-card toggle and A4 chip, opened commentaren by default, removed the generic no-signal next-step sentence, and simplified trend-dot hover labels/detail modals so `DW1`/`DW2` basket names no longer appear as graph point labels or evaluation categories.
+
+Remaining checks:
+
+- Visual screenshot QA on `1366x768`, `1280x720`, and mobile.
+- A4 PDF/print proof for a klassenleraar card with many subject lines.
+- Consider making klassenleraar graph points click into a small detail modal in a later sprint.
+
 ## 2026-06-18 UI Reanalysis Update
 
 Implemented in the current pass:
