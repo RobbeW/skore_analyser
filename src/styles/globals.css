@@ -605,6 +605,19 @@ h4 {
   align-items: start;
 }
 
+.class-teacher-review-screen .ui-card-header {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.class-teacher-review-screen .review-overview-card .ui-card-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.class-teacher-review-screen .ui-card-description {
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+}
+
 .class-teacher-wide-card,
 .review-overview-card {
   grid-column: 1 / -1;
@@ -1693,6 +1706,15 @@ h4 {
   opacity: 0.32;
 }
 
+.class-teacher-overall-trendline {
+  stroke: var(--primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 8 7;
+  opacity: 0.92;
+  filter: drop-shadow(0 3px 6px rgba(82, 0, 255, 0.16));
+}
+
 .class-teacher-line-group path {
   stroke-width: 2.2;
   stroke-linecap: round;
@@ -1784,6 +1806,13 @@ h4 {
   background: color-mix(in srgb, var(--primary) 5%, var(--card));
 }
 
+.class-teacher-student-table .class-teacher-interesting-column {
+  width: 8.5rem;
+  min-width: 8.5rem;
+  text-align: right;
+  white-space: normal;
+}
+
 .compact-detail-grid {
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.75fr);
   margin-top: 0.7rem;
@@ -1827,6 +1856,17 @@ h4 {
   font-weight: 900;
   line-height: 1.2;
   text-align: right;
+}
+
+.class-teacher-scale-toggle {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.class-teacher-scale-toggle .ui-button {
+  min-height: 32px;
 }
 
 .comment-list,
@@ -3108,6 +3148,12 @@ h4 {
   .tour-panel-body,
   .setup-progress-step,
   .wizard-card,
+  .class-teacher-generation-shell::before,
+  .class-teacher-dashboard-screen .stats-grid,
+  .class-teacher-dashboard-filters,
+  .class-teacher-student-card,
+  .class-teacher-review-grid > .ui-card,
+  .class-teacher-notice,
   .generation-step.is-active span {
     animation: none;
     transition: none;
