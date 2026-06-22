@@ -3,3 +3,8 @@ node_modules/
 .pnpm-store/
 dist/
 *.pyc
+.server_stdout.log
+.server_stderr.log
+.env
+.env.*
+example_data/*.xlsx
