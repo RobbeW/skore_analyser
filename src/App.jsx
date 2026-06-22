@@ -41,6 +41,11 @@ import { getLanguage, setLanguage, t, translateTrend } from "../js/i18n.js";
 import { buildProjectPayload, exportJsonPayload, exportProjectJson } from "../js/exporter.js";
 import { hydrateProjectPayload } from "../js/project-importer.js";
 import {
+  appendSuggestionToNote,
+  generateClassTeacherNoteSuggestion,
+  generateSubjectTeacherNoteSuggestion,
+} from "../js/note-guidance.js";
+import {
   applyPreset,
   loadNotes,
   loadPreferences,
@@ -356,6 +361,7 @@ export default function App() {
   const [activeTour, setActiveTour] = useState(null);
   const [evaluationDialog, setEvaluationDialog] = useState(null);
   const [histogramDialog, setHistogramDialog] = useState(null);
+  const [noteSuggestionDialog, setNoteSuggestionDialog] = useState(null);
   const [printStudentId, setPrintStudentId] = useState(null);
   const [uploadSummary, setUploadSummary] = useState(null);
   const [projectSaveState, setProjectSaveState] = useState("idle");
@@ -807,6 +813,31 @@ export default function App() {
     }
   }
 
+  function openSubjectNoteSuggestion(student, peers, displayName) {
+    setNoteSuggestionDialog({
+      mode: "vakdocent",
+      studentId: student.id,
+      studentName: displayName || student.name,
+      suggestion: generateSubjectTeacherNoteSuggestion(student, peers),
+    });
+  }
+
+  function openClassTeacherNoteSuggestion(student, currentAnalysis, displayName) {
+    setNoteSuggestionDialog({
+      mode: "klassenleraar",
+      studentId: student.id,
+      studentName: displayName || student.name,
+      suggestion: generateClassTeacherNoteSuggestion(student, currentAnalysis),
+    });
+  }
+
+  function insertNoteSuggestion(text) {
+    if (!noteSuggestionDialog) return;
+    const nextNote = appendSuggestionToNote(notes[noteSuggestionDialog.studentId] || "", text);
+    updateNote(noteSuggestionDialog.studentId, nextNote);
+    setNoteSuggestionDialog(null);
+  }
+
   function saveProjectBackup() {
     if (appMode === "klassenleraar" && classTeacherAnalyses[0]) {
       const current = classTeacherAnalyses[0];
@@ -997,6 +1028,7 @@ export default function App() {
               onCardSectionOpenChange={updateCardSectionPreference}
               onFiltersChange={updateFilters}
               onNoteChange={updateNote}
+              onOpenNoteSuggestion={openSubjectNoteSuggestion}
               onScrollToStudent={scrollToStudent}
               onStartTour={startStudentTour}
               onPrintStudent={printStudentCard}
@@ -1015,6 +1047,7 @@ export default function App() {
               notes={notes}
               noteSaveStatus={noteSaveStatus}
               onNoteChange={updateNote}
+              onOpenNoteSuggestion={openClassTeacherNoteSuggestion}
               onScrollToStudent={scrollToStudent}
               onStartTour={startStudentTour}
               onPrintStudent={printStudentCard}
@@ -1048,6 +1081,14 @@ export default function App() {
           anonymised={Boolean(preferences.anonymised)}
           onOpenChange={(open) => {
             if (!open) setHistogramDialog(null);
+          }}
+        />
+
+        <NoteSuggestionDialog
+          data={noteSuggestionDialog}
+          onInsert={insertNoteSuggestion}
+          onOpenChange={(open) => {
+            if (!open) setNoteSuggestionDialog(null);
           }}
         />
       </div>
@@ -2170,6 +2211,7 @@ function DashboardScreen({
   onCardSectionOpenChange,
   onFiltersChange,
   onNoteChange,
+  onOpenNoteSuggestion,
   onScrollToStudent,
   onStartTour,
   onPrintStudent,
@@ -2282,6 +2324,7 @@ function DashboardScreen({
             note={notes[student.id] || ""}
             noteStatus={noteSaveStatus[student.id] || "idle"}
             onNoteChange={onNoteChange}
+            onOpenNoteSuggestion={onOpenNoteSuggestion}
             onSectionOpenChange={onCardSectionOpenChange}
             onScrollToStudent={onScrollToStudent}
             onStartTour={onStartTour}
@@ -2306,6 +2349,7 @@ function ClassTeacherDashboardScreen({
   notes,
   noteSaveStatus,
   onNoteChange,
+  onOpenNoteSuggestion,
   onScrollToStudent,
   onStartTour,
   onPrintStudent,
@@ -2414,6 +2458,7 @@ function ClassTeacherDashboardScreen({
             note={notes[student.id] || ""}
             noteStatus={noteSaveStatus[student.id] || "idle"}
             onNoteChange={onNoteChange}
+            onOpenNoteSuggestion={onOpenNoteSuggestion}
             onScrollToStudent={onScrollToStudent}
             onStartTour={onStartTour}
             onPrintStudent={onPrintStudent}
@@ -2520,6 +2565,7 @@ function ClassTeacherStudentCard({
   note,
   noteStatus,
   onNoteChange,
+  onOpenNoteSuggestion,
   onScrollToStudent,
   onStartTour,
   onPrintStudent,
@@ -2646,9 +2692,15 @@ function ClassTeacherStudentCard({
         <section className="card-section notes-section" data-tour-part="notes">
           <div className="section-row notes-heading">
             <h4>{t("student.teacherJudgement")}</h4>
-            <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
-              {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
-            </span>
+            <div className="notes-heading-actions">
+              <Button variant="outline" size="sm" type="button" onClick={() => onOpenNoteSuggestion?.(student, analysis, displayName)}>
+                <Sparkles size={14} aria-hidden="true" />
+                {t("noteSuggestion.button")}
+              </Button>
+              <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
+                {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
+              </span>
+            </div>
           </div>
           <Textarea
             value={note}
@@ -3202,6 +3254,7 @@ function StudentCard({
   note,
   noteStatus,
   onNoteChange,
+  onOpenNoteSuggestion,
   onSectionOpenChange,
   onScrollToStudent,
   onStartTour,
@@ -3326,9 +3379,15 @@ function StudentCard({
         <section className="card-section notes-section" data-tour-part="notes">
           <div className="section-row notes-heading">
             <h4>{t("student.teacherJudgement")}</h4>
-            <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
-              {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
-            </span>
+            <div className="notes-heading-actions">
+              <Button variant="outline" size="sm" type="button" onClick={() => onOpenNoteSuggestion?.(student, peers, displayName)}>
+                <Sparkles size={14} aria-hidden="true" />
+                {t("noteSuggestion.button")}
+              </Button>
+              <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
+                {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
+              </span>
+            </div>
           </div>
           <Textarea
             value={note}
@@ -3953,6 +4012,142 @@ function HistogramDialog({ data, anonymised, onOpenChange }) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function NoteSuggestionDialog({ data, onInsert, onOpenChange }) {
+  const suggestion = data?.suggestion;
+  const [draft, setDraft] = useState("");
+  const leerpuntUrl = "https://leerpunt.be/leidraden/feedback";
+
+  useEffect(() => {
+    setDraft(suggestion?.text || "");
+  }, [suggestion]);
+
+  return (
+    <Dialog open={Boolean(data)} onOpenChange={onOpenChange}>
+      <DialogContent className="note-suggestion-dialog">
+        <DialogHeader className="note-suggestion-header">
+          <div className="note-suggestion-title-row">
+            <div>
+              <DialogTitle>{t("noteSuggestion.title")}</DialogTitle>
+              <DialogDescription>
+                {data?.studentName ? `${data.studentName} - ${t(`upload.mode.${data.mode}`)}` : t("noteSuggestion.description")}
+              </DialogDescription>
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  asChild
+                  className="note-suggestion-help-button"
+                  variant="outline"
+                  size="icon"
+                  aria-label={t("noteSuggestion.leerpuntLink")}
+                >
+                  <a href={leerpuntUrl} target="_blank" rel="noreferrer">
+                    <HelpCircle size={18} aria-hidden="true" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("noteSuggestion.leerpuntLink")}</TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="note-suggestion-source">
+            <Badge variant="secondary">{t("noteSuggestion.sourceBadge")}</Badge>
+            <span>{t("noteSuggestion.sourceText")}</span>
+          </div>
+        </DialogHeader>
+        {suggestion ? (
+          <div className="note-suggestion-content">
+            <div className="note-suggestion-meta">
+              <Badge variant={suggestion.dataSupportLevel === "limited" ? "warning" : "secondary"}>
+                {dataSupportLabel(suggestion.dataSupportLevel)}
+              </Badge>
+              <Badge variant="outline">{recipientScopeLabel(suggestion.recipientScope)}</Badge>
+              <Badge variant="outline">{patternLabel(suggestion.primaryPattern)}</Badge>
+            </div>
+
+            <section>
+              <h4>{t("noteSuggestion.proposal")}</h4>
+              <Textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                aria-label={t("noteSuggestion.proposal")}
+              />
+            </section>
+
+            <section className="note-suggestion-grid">
+              <NoteSuggestionList title={t("noteSuggestion.basedOn")} items={suggestion.supportingData} />
+              <NoteSuggestionList title={t("noteSuggestion.missingInfo")} items={suggestion.missingInformation} />
+              <NoteSuggestionList title={t("noteSuggestion.nextStep")} items={[suggestion.possibleNextAction].filter(Boolean)} />
+              <NoteSuggestionList title={t("noteSuggestion.warnings")} items={[...suggestion.warnings, ...(suggestion.validation?.warnings || [])]} />
+            </section>
+
+            <details className="note-suggestion-rules">
+              <summary>{t("noteSuggestion.rules")}</summary>
+              <ul>
+                {(suggestion.appliedRules || []).map((rule) => (
+                  <li key={`${rule.origin}-${rule.id}`}>
+                    <strong>{rule.id}</strong>
+                    <span>{ruleOriginLabel(rule)}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button variant="ghost" type="button" onClick={() => onOpenChange(false)}>{t("noteSuggestion.close")}</Button>
+          <Button type="button" onClick={() => onInsert(draft)} disabled={!draft.trim()}>
+            {t("noteSuggestion.insert")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NoteSuggestionList({ title, items }) {
+  const visibleItems = (items || []).filter(Boolean);
+  return (
+    <div className="note-suggestion-list">
+      <h4>{title}</h4>
+      {visibleItems.length ? (
+        <ul>
+          {visibleItems.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}
+        </ul>
+      ) : <p className="muted">{t("noteSuggestion.none")}</p>}
+    </div>
+  );
+}
+
+function dataSupportLabel(level) {
+  if (level === "limited") return t("noteSuggestion.data.limited");
+  if (level === "rich") return t("noteSuggestion.data.rich");
+  return t("noteSuggestion.data.sufficient");
+}
+
+function recipientScopeLabel(scope) {
+  if (scope === "whole_class") return t("noteSuggestion.scope.wholeClass");
+  if (scope === "subject_group") return t("noteSuggestion.scope.subjectGroup");
+  return t("noteSuggestion.scope.individual");
+}
+
+function patternLabel(pattern) {
+  const key = `noteSuggestion.pattern.${pattern}`;
+  const translated = t(key);
+  return translated === key ? String(pattern || "").replace(/_/g, " ") : translated;
+}
+
+function ruleOriginLabel(rule) {
+  if (rule.origin === "source_based" && rule.source) {
+    return t("noteSuggestion.rule.source", {
+      recommendation: rule.source.recommendation,
+      pages: rule.source.pages.join("-"),
+    });
+  }
+  if (rule.origin === "local_school_policy") return t("noteSuggestion.rule.local");
+  if (rule.origin === "product_heuristic") return t("noteSuggestion.rule.product");
+  return t("noteSuggestion.rule.teacher");
 }
 
 function EmptyState() {

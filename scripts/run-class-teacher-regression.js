@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 import { aggregateClassTeacherReportGroups } from "../js/class-teacher-aggregator.js";
 import { calculateClassTeacherAnalysis } from "../js/class-teacher-calculator.js";
 import { parseClassTeacherReportWorkbook } from "../js/class-teacher-parser.js";
+import {
+  appendSuggestionToNote,
+  generateClassTeacherNoteSuggestion,
+  generateSubjectTeacherNoteSuggestion,
+} from "../js/note-guidance.js";
 import { readWorkbook } from "./workbook-reader.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -86,6 +91,7 @@ function main() {
   const analyses = aggregateClassTeacherReportGroups(reports).map((aggregation) => calculateClassTeacherAnalysis(aggregation));
   assertAggregations(analyses);
   assertCalculations(analyses);
+  assertNoteGuidance();
 
   if (SHOULD_BUILD) {
     runViteBuild();
@@ -163,6 +169,38 @@ function assertCalculations(analyses) {
     assert(criticalStudents.every((student) => student.keySubjectSummary.below50.length), `${analysis.classCode}: kritisch hoofdvak zonder score onder 50`);
   }
   logPass("Berekeningen: hoofdvak-signalen en dashboardstatistieken.");
+}
+
+function assertNoteGuidance() {
+  const subjectSuggestion = generateSubjectTeacherNoteSuggestion({
+    id: "subject-student",
+    finalWeighted: 48,
+    evidence: { expectedRequired: 4, missingRequired: 0 },
+    categoryRows: [{ category: "EX", rawPercentage: 42, hasAvailableEvidence: true }],
+    trend: { periodScores: [{ value: 40 }, { value: 55 }], volatility: 6 },
+    flags: [],
+  }, []);
+  assertEqual(subjectSuggestion.primaryPattern, "well_below_configured_threshold", "Vakdocent notitievoorstel: lage jaarscore");
+  assert(subjectSuggestion.validation.ok, "Vakdocent notitievoorstel bevat validatiewaarschuwingen");
+
+  const classTeacherSuggestion = generateClassTeacherNoteSuggestion({
+    id: "class-student",
+    finalWeighted: 70,
+    subjectLines: [
+      { subject: "Wiskunde", isKeySubject: true, yearScore: 48 },
+      { subject: "Frans", isKeySubject: false, yearScore: 72 },
+      { subject: "Nederlands", isKeySubject: true, yearScore: 74 },
+    ],
+    overallTrend: { points: [{ value: 70 }, { value: 72 }] },
+    subjectSpread: { stddev: 8 },
+    flags: [],
+  }, { periods: [{}, {}, {}], students: [] });
+  assertEqual(classTeacherSuggestion.primaryPattern, "main_subject_below_threshold", "Klassenleraar notitievoorstel: hoofdvak");
+  assert(classTeacherSuggestion.text.includes("hoofdvakken"), "Klassenleraar notitievoorstel benoemt hoofdvakken niet");
+
+  const appended = appendSuggestionToNote("Bestaande notitie.", "Nieuw voorstel.");
+  assertEqual(appended, "Bestaande notitie.\n\nNieuw voorstel.", "Notitievoorstel wordt niet correct toegevoegd");
+  logPass("Notitievoorstel: beslisboom, hoofdvakregel en invoegen.");
 }
 
 function assertNoBlockingReportWarnings(report) {
