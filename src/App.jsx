@@ -13,8 +13,6 @@ import {
   ShieldCheck,
   Sparkles,
   UploadCloud,
-  Minimize2,
-  Maximize2,
   ArrowRight,
 } from "lucide-react";
 
@@ -40,7 +38,7 @@ import { periodSchemaForYear, trackById, trackOptionsForYear } from "../js/class
 import { calculateAnalysis, summariseStudents } from "../js/calculator.js";
 import { THRESHOLD_BANDS, thresholdBand } from "../js/config.js";
 import { getLanguage, setLanguage, t, translateTrend } from "../js/i18n.js";
-import { buildProjectPayload, exportProjectJson } from "../js/exporter.js";
+import { buildProjectPayload, exportJsonPayload, exportProjectJson } from "../js/exporter.js";
 import { hydrateProjectPayload } from "../js/project-importer.js";
 import {
   applyPreset,
@@ -116,7 +114,7 @@ const DEFAULT_OPEN_CARD_SECTIONS = {
   duiding: false,
   contextCharts: true,
   score: false,
-  comments: false,
+  comments: true,
 };
 
 const CARD_TOUR_STEPS = [
@@ -126,10 +124,21 @@ const CARD_TOUR_STEPS = [
   { part: "advice", titleKey: "tour.adviceTitle", bodyKey: "tour.adviceBody" },
   { part: "notes", titleKey: "tour.notesTitle", bodyKey: "tour.notesBody" },
 ];
+const CLASS_TEACHER_CARD_TOUR_STEPS = [
+  { part: "total", titleKey: "classTeacherTourTotalTitle", bodyKey: "classTeacherTourTotalBody", copy: true },
+  { part: "graph", titleKey: "classTeacherTourGraphTitle", bodyKey: "classTeacherTourGraphBody", copy: true },
+  { part: "advice", titleKey: "classTeacherTourSummaryTitle", bodyKey: "classTeacherTourSummaryBody", copy: true },
+  { part: "table", titleKey: "classTeacherTourTableTitle", bodyKey: "classTeacherTourTableBody", copy: true },
+  { part: "notes", titleKey: "classTeacherTourNotesTitle", bodyKey: "classTeacherTourNotesBody", copy: true },
+];
 const TOUR_REQUIRED_SECTIONS = {
   table: "score",
 };
 const APP_MODES = ["vakdocent", "klassenleraar"];
+
+function cardTourStepsForMode(mode) {
+  return mode === "klassenleraar" ? CLASS_TEACHER_CARD_TOUR_STEPS : CARD_TOUR_STEPS;
+}
 
 const FALLBACK_COPY = {
   nl: {
@@ -154,13 +163,12 @@ const FALLBACK_COPY = {
     classTeacherOverallLine: "Algemene lijn",
     classTeacherSubjectLines: "Vaklijnen",
     classTeacherSubjectPicker: "Welke vaklijnen tonen?",
-    classTeacherKeySubjectsOnly: "Sleutelvakken",
+    classTeacherKeySubjectsOnly: "Hoofdvakken",
     classTeacherAllSubjects: "Alle vakken",
     classTeacherSubjectMatrix: "Vakoverzicht",
-    classTeacherKeySubject: "Sleutelvak",
+    classTeacherKeySubject: "Hoofdvak",
     classTeacherNoSignals: "Geen opvallende klassenleraar-signalen.",
     classTeacherTrackSignal: "Richting",
-    classTeacherCardIntro: "Gebruik deze kaart als voorbereiding op de klassenraad: cijfers, vaklijnen en notities samen.",
     classTeacherMainSubjectDanger: "Hoofdvak in de gevarenzone",
     classTeacherShowMainSubjectDanger: "Toon leerlingen met hoofdvak in de gevarenzone",
     classTeacherNoMainSubjectDanger: "Geen hoofdvak in de gevarenzone",
@@ -170,6 +178,13 @@ const FALLBACK_COPY = {
     classTeacherPositiveProfiles: "Sterke stabiele profielen",
     classTeacherSubjectFilter: "Filter op vak",
     classTeacherRiskSummary: "Aandachtspunten",
+    classTeacherSummaryGood: "Geen opvallende automatische signalen.",
+    classTeacherSummaryAttention: "Aandacht voor {count} element(en).",
+    classTeacherSummaryMainSubjects: "Hoofdvakken in alarmzone: {subjects}.",
+    classTeacherSummaryOtherSubjects: "Andere vakken in alarmzone: {subjects}.",
+    classTeacherSummaryNoOtherSubjects: "Geen andere vakken in alarmzone.",
+    classTeacherScaleFull: "0-100",
+    classTeacherScaleZoom: "Inzoomen",
     classTeacherGenerateFlow: "Opbouw",
     classTeacherGeneratingTitle: "Leerlingkaarten opbouwen",
     classTeacherGeneratingBody: "We bundelen {students} leerlingen, {subjects} vakken en {periods} rapportperiodes tot rustige klassenraadkaarten.",
@@ -181,6 +196,17 @@ const FALLBACK_COPY = {
     classTeacherMissingPeriodTitle: "Rapportperiode ontbreekt",
     classTeacherMissingPeriodBody: "{missing} van {expected} verwachte periodes ontbreken. De kaarten blijven bruikbaar, maar de jaarlijn steunt op minder meetpunten.",
     classTeacherGraphHint: "Beweeg over een punt voor details. De paarse lijn is het jaartotaal; de zachte lijnen zijn vakken.",
+    classTeacherTourEyebrow: "Rondleiding klassenleraar",
+    classTeacherTourTotalTitle: "Snelle leerlingcontext",
+    classTeacherTourTotalBody: "Bovenaan zie je leerling, klas, richting en jaartotaal. Gebruik dit als vertrekpunt voor de klassenraad.",
+    classTeacherTourGraphTitle: "Grafieken over vakken heen",
+    classTeacherTourGraphBody: "De paarse lijn toont het algemene jaarbeeld. De zachte lijnen tonen de gekozen vakken. Met 0-100 of Inzoomen kies je of je het volledige bereik of kleine verschillen beter wil zien.",
+    classTeacherTourSummaryTitle: "Samenvatting en aandachtspunten",
+    classTeacherTourSummaryBody: "Hier bundelt de kaart hoofdvakken en andere vakken in alarmzone. Dubbele hoofdvaksignalen worden samengevat zodat je sneller ziet waar gesprek of context nodig is.",
+    classTeacherTourTableTitle: "Vakoverzicht",
+    classTeacherTourTableBody: "Deze tabel toont per vak de rapportperiodes en het jaartotaal. Hoofdvakken zijn gemarkeerd omdat ze belangrijk zijn binnen de richting van deze klas.",
+    classTeacherTourNotesTitle: "Wat zeg je op de klassenraad?",
+    classTeacherTourNotesBody: "Noteer hier je eigen duiding: inzet, afwezigheden, remediëring, afspraken of wat je concreet wil bespreken.",
     roleHelpVakdocent: "Een Skore-export voor jouw eigen vak.",
     roleHelpKlassenleraar: "Drie of vier rapportbestanden voor een hele klas.",
     basketNormalised: "Telt mee als",
@@ -199,7 +225,6 @@ const FALLBACK_COPY = {
     dashboardFlow: "Kaarten",
     classCards: "Klasgroepen",
     selected: "Geselecteerd",
-    printReady: "A4-kaartmodus",
     closeTour: "Rondleiding sluiten",
     next: "Volgende",
     previous: "Vorige",
@@ -235,7 +260,6 @@ const FALLBACK_COPY = {
     classTeacherKeySubject: "Key subject",
     classTeacherNoSignals: "No notable class-teacher signals.",
     classTeacherTrackSignal: "Track",
-    classTeacherCardIntro: "Use this card to prepare class council: results, subject lines, and notes together.",
     classTeacherMainSubjectDanger: "Core subject in the danger zone",
     classTeacherShowMainSubjectDanger: "Show students with a core subject in the danger zone",
     classTeacherNoMainSubjectDanger: "No core subject in the danger zone",
@@ -245,6 +269,13 @@ const FALLBACK_COPY = {
     classTeacherPositiveProfiles: "Strong stable profiles",
     classTeacherSubjectFilter: "Filter by subject",
     classTeacherRiskSummary: "Attention points",
+    classTeacherSummaryGood: "No notable automatic signals.",
+    classTeacherSummaryAttention: "Attention for {count} item(s).",
+    classTeacherSummaryMainSubjects: "Core subjects in the alarm zone: {subjects}.",
+    classTeacherSummaryOtherSubjects: "Other subjects in the alarm zone: {subjects}.",
+    classTeacherSummaryNoOtherSubjects: "No other subjects in the alarm zone.",
+    classTeacherScaleFull: "0-100",
+    classTeacherScaleZoom: "Zoom",
     classTeacherGenerateFlow: "Build",
     classTeacherGeneratingTitle: "Building student cards",
     classTeacherGeneratingBody: "We combine {students} students, {subjects} subjects, and {periods} report periods into calm class-council cards.",
@@ -256,6 +287,17 @@ const FALLBACK_COPY = {
     classTeacherMissingPeriodTitle: "Report period missing",
     classTeacherMissingPeriodBody: "{missing} of {expected} expected periods are missing. The cards remain useful, but the year line has fewer points.",
     classTeacherGraphHint: "Hover a point for details. The purple line is the year total; the soft lines are subjects.",
+    classTeacherTourEyebrow: "Class-teacher tour",
+    classTeacherTourTotalTitle: "Quick student context",
+    classTeacherTourTotalBody: "At the top you see student, class, track, and year total. Use this as a starting point for the class council.",
+    classTeacherTourGraphTitle: "Charts across subjects",
+    classTeacherTourGraphBody: "The purple line shows the overall year profile. The soft lines show selected subjects. Use 0-100 or Zoom to choose between the full range and smaller differences.",
+    classTeacherTourSummaryTitle: "Summary and attention points",
+    classTeacherTourSummaryBody: "This section combines core subjects and other subjects in alarm zones. Repeated core-subject signals are summarised so you can quickly see where context or discussion is needed.",
+    classTeacherTourTableTitle: "Subject overview",
+    classTeacherTourTableBody: "This table shows the report periods and year total for each subject. Core subjects are marked because they matter more in this track context.",
+    classTeacherTourNotesTitle: "What will you say in class council?",
+    classTeacherTourNotesBody: "Add your own context here: effort, absences, remediation, agreements, or the concrete point you want to discuss.",
     roleHelpVakdocent: "One Skore export for your own subject.",
     roleHelpKlassenleraar: "Three or four report files for a whole class.",
     basketNormalised: "Counts as",
@@ -274,7 +316,6 @@ const FALLBACK_COPY = {
     dashboardFlow: "Cards",
     classCards: "Class groups",
     selected: "Selected",
-    printReady: "A4 card mode",
     closeTour: "Close tour",
     next: "Next",
     previous: "Previous",
@@ -400,7 +441,9 @@ export default function App() {
   }
 
   function markProjectDirty() {
-    if (model && config) setProjectSaveState("dirty");
+    if ((model && config) || (appMode === "klassenleraar" && classTeacherAnalyses.length)) {
+      setProjectSaveState("dirty");
+    }
   }
 
   async function loadWorkbook(source, fileName) {
@@ -497,7 +540,25 @@ export default function App() {
       const payload = JSON.parse(await file.text());
       if (payload?.mode === "klassenleraar") {
         setAppModeState("klassenleraar");
-        throw new Error(t("status.classTeacherProjectUnsupported"));
+        persistPreferences({ appMode: "klassenleraar" });
+        const reports = Array.isArray(payload.classTeacherReports) ? payload.classTeacherReports : [];
+        const trackOverrides = payload.classTeacherTrackOverrides || {};
+        const subjectOverrides = payload.classTeacherSubjectOverrides || {};
+        const analyses = calculateClassTeacherAnalysesFromReports(reports, trackOverrides, subjectOverrides);
+        const nextWorkspaceKey = `klassenleraar::${analyses[0]?.classCode || "klas"}::${analyses[0]?.periodSchemaId || "periodes"}`.toLowerCase();
+        setModel(null);
+        setConfig(null);
+        setAnalysis(null);
+        setFilters(defaultFilters());
+        setClassTeacherReports(reports);
+        setClassTeacherTrackOverrides(trackOverrides);
+        setClassTeacherSubjectOverrides(subjectOverrides);
+        setClassTeacherAnalyses(analyses);
+        setNotes(saveNotes(nextWorkspaceKey, payload.teacherNotes || {}));
+        setProjectSaveState("saved");
+        setWorkflowStep(analyses.length ? "classTeacherReview" : "upload");
+        setStatus({ kind: "success", text: t("status.projectLoaded", { fileName: file.name }) });
+        return;
       }
       const restored = hydrateProjectPayload(payload, defaultFilters());
       const restoredWorkspaceKey = `${restored.model.fileName}::${restored.config.subject || restored.model.subjects?.[0]?.value || "subject"}`.toLowerCase();
@@ -747,6 +808,24 @@ export default function App() {
   }
 
   function saveProjectBackup() {
+    if (appMode === "klassenleraar" && classTeacherAnalyses[0]) {
+      const current = classTeacherAnalyses[0];
+      const payload = buildClassTeacherProjectPayload(
+        classTeacherReports,
+        classTeacherAnalyses,
+        notes,
+        classTeacherTrackOverrides,
+        classTeacherSubjectOverrides
+      );
+      const localSave = saveProjectDraft(workspaceKey, payload);
+      exportJsonPayload(payload, `${current.classCode || "klassenleraar"}-project.json`);
+      setProjectSaveState(localSave.ok ? "saved" : "error");
+      setStatus({
+        kind: localSave.ok ? "success" : "warning",
+        text: localSave.ok ? t("status.projectSaved") : t("status.projectSavePartial"),
+      });
+      return;
+    }
     if (!model || !config) return;
     const exportAnalysis = analysis || calculateAnalysis(model, config);
     const payload = buildProjectPayload(model, config, exportAnalysis, notes, filters, {});
@@ -771,7 +850,7 @@ export default function App() {
     setPrintStudentId(studentId);
   }
 
-  const compactCards = preferences.compactCards !== false;
+  const compactCards = true;
   const openCardSections = {
     ...DEFAULT_OPEN_CARD_SECTIONS,
     ...(preferences.openCardSections || {}),
@@ -787,7 +866,12 @@ export default function App() {
   }
 
   function changeActiveTour(nextTour) {
-    const requiredSection = nextTour ? TOUR_REQUIRED_SECTIONS[CARD_TOUR_STEPS[nextTour.step]?.part] : null;
+    const tourSteps = cardTourStepsForMode(appMode);
+    if (nextTour && !tourSteps[nextTour.step]) {
+      setActiveTour(null);
+      return;
+    }
+    const requiredSection = appMode === "vakdocent" && nextTour ? TOUR_REQUIRED_SECTIONS[tourSteps[nextTour.step]?.part] : null;
     if (requiredSection && !openCardSections[requiredSection]) {
       persistPreferences({
         openCardSections: {
@@ -910,7 +994,6 @@ export default function App() {
               openCardSections={openCardSections}
               notes={notes}
               noteSaveStatus={noteSaveStatus}
-              onCompactCardsChange={(value) => persistPreferences({ compactCards: value })}
               onCardSectionOpenChange={updateCardSectionPreference}
               onFiltersChange={updateFilters}
               onNoteChange={updateNote}
@@ -931,12 +1014,12 @@ export default function App() {
               compactCards={compactCards}
               notes={notes}
               noteSaveStatus={noteSaveStatus}
-              onCompactCardsChange={(value) => persistPreferences({ compactCards: value })}
               onNoteChange={updateNote}
               onScrollToStudent={scrollToStudent}
               onStartTour={startStudentTour}
               onPrintStudent={printStudentCard}
               printStudentId={printStudentId}
+              onHistogramClick={setHistogramDialog}
             />
           ) : null}
         </main>
@@ -945,6 +1028,7 @@ export default function App() {
 
         <StudentTourOverlay
           c={c}
+          mode={appMode}
           activeTour={activeTour}
           onChange={changeActiveTour}
           onClose={() => closeTour(false)}
@@ -1045,6 +1129,20 @@ function buildClassTeacherUploadSummary(files, analyses) {
     track: tracks.join(", ") || t("option.notAvailable"),
     keySubjects,
     warnings: warningCodes,
+  };
+}
+
+function buildClassTeacherProjectPayload(reports, analyses, notes = {}, trackOverrides = {}, subjectOverrides = {}) {
+  const primary = analyses[0] || {};
+  return {
+    mode: "klassenleraar",
+    exportedAt: new Date().toISOString(),
+    privacy: t("export.privacy"),
+    classTeacherReports: reports,
+    classTeacherTrackOverrides: trackOverrides,
+    classTeacherSubjectOverrides: subjectOverrides,
+    teacherNotes: notes,
+    analysis: primary,
   };
 }
 
@@ -1239,18 +1337,6 @@ function sortClassTeacherStudents(students = [], filters = {}) {
   });
 }
 
-function summariseClassTeacherDisplayStudents(students = [], c = (key) => key) {
-  const values = students.map((student) => student.finalWeighted).filter(Number.isFinite);
-  const mean = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-  const dangerCount = students.filter(classTeacherHasMainSubjectDanger).length;
-  return {
-    count: students.length,
-    mean,
-    dangerCount,
-    summary: `${students.length} ${t("detected.students").toLowerCase()}, ${t("dashboard.classAverage").toLowerCase()} ${formatNumber(mean)}%, ${dangerCount} ${c("classTeacherMainSubjectDanger").toLowerCase()}.`,
-  };
-}
-
 function classTeacherHasMainSubjectDanger(student) {
   return classTeacherDangerSubjects(student).length > 0
     || student.flags?.some((flag) => ["key_subject_critical", "multiple_key_subjects_weak", "track_mismatch_signal"].includes(flag.type));
@@ -1270,6 +1356,50 @@ function classTeacherMainSubjectDangerLabel(student, c) {
   if (!dangerSubjects.length) return c("classTeacherNoMainSubjectDanger");
   const visible = dangerSubjects.slice(0, 3).map((item) => `${item.subject} ${formatNumber(item.score)}%`).join(", ");
   return dangerSubjects.length > 3 ? `${visible} +${dangerSubjects.length - 3}` : visible;
+}
+
+function classTeacherSubjectAlarmLists(student) {
+  const mainSubjects = [];
+  const otherSubjects = [];
+  for (const line of student.subjectLines || []) {
+    const score = scoreForClassTeacherLine(line);
+    if (!Number.isFinite(score) || score >= 60) continue;
+    const entry = `${line.subject} ${formatNumber(score)}%`;
+    if (line.isKeySubject) {
+      mainSubjects.push(entry);
+    } else {
+      otherSubjects.push(entry);
+    }
+  }
+  return { mainSubjects, otherSubjects };
+}
+
+function classTeacherStudentSummary(student, c) {
+  const { mainSubjects, otherSubjects } = classTeacherSubjectAlarmLists(student);
+  const parts = [];
+  if (mainSubjects.length) {
+    parts.push(c("classTeacherSummaryMainSubjects", { subjects: mainSubjects.join(", ") }));
+  }
+  if (otherSubjects.length) {
+    parts.push(c("classTeacherSummaryOtherSubjects", { subjects: otherSubjects.join(", ") }));
+  } else if (mainSubjects.length) {
+    parts.push(c("classTeacherSummaryNoOtherSubjects"));
+  }
+  return {
+    title: student.flags?.length
+      ? c("classTeacherSummaryAttention", { count: student.flags.length })
+      : c("classTeacherSummaryGood"),
+    body: parts.join(" ") || c("classTeacherNoSignals"),
+  };
+}
+
+function classTeacherDetailFlags(student) {
+  const summaryTypes = new Set([
+    "key_subject_critical",
+    "multiple_key_subjects_weak",
+    "track_mismatch_signal",
+  ]);
+  return (student.flags || []).filter((flag) => !summaryTypes.has(flag.type));
 }
 
 function scoreForClassTeacherLine(line) {
@@ -2037,7 +2167,6 @@ function DashboardScreen({
   openCardSections,
   notes,
   noteSaveStatus,
-  onCompactCardsChange,
   onCardSectionOpenChange,
   onFiltersChange,
   onNoteChange,
@@ -2075,7 +2204,6 @@ function DashboardScreen({
               assignments: analysis.assignments.length,
             })}</p>
           </div>
-          <Badge variant="secondary">{c("printReady")}</Badge>
         </div>
 
         <ClassTabs classes={classes} students={analysis.students} selectedClass={filters.classCode} onSelect={(classCode) => onFiltersChange({ classCode })} />
@@ -2139,10 +2267,6 @@ function DashboardScreen({
           <h3>{t("student.cardsTitle")}</h3>
           <span>{filteredStudents.length} {t("detected.students").toLowerCase()}</span>
         </div>
-        <Button variant="outline" size="sm" type="button" onClick={() => onCompactCardsChange(!compactCards)}>
-          {compactCards ? <Maximize2 size={15} aria-hidden="true" /> : <Minimize2 size={15} aria-hidden="true" />}
-          {compactCards ? t("dashboard.roomyCards") : t("dashboard.compactCards")}
-        </Button>
       </div>
 
       <div className={cn("student-cards", compactCards && "student-cards--compact")}>
@@ -2181,12 +2305,12 @@ function ClassTeacherDashboardScreen({
   compactCards,
   notes,
   noteSaveStatus,
-  onCompactCardsChange,
   onNoteChange,
   onScrollToStudent,
   onStartTour,
   onPrintStudent,
   printStudentId,
+  onHistogramClick,
 }) {
   const students = [...analysis.students].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   const [dashboardFilters, setDashboardFilters] = useState({
@@ -2203,7 +2327,6 @@ function ClassTeacherDashboardScreen({
   const stats = analysis.stats || {};
   const mainSubjectDangerStudents = students.filter(classTeacherHasMainSubjectDanger);
   const keyRiskCount = stats.keyRiskCount || mainSubjectDangerStudents.length;
-  const filteredStats = summariseClassTeacherDisplayStudents(filteredStudents, c);
   const polishNotices = classTeacherPolishNotices(analysis, c);
   const updateDashboardFilters = (patch) => setDashboardFilters((current) => ({ ...current, ...patch }));
 
@@ -2246,11 +2369,10 @@ function ClassTeacherDashboardScreen({
       <div className="overview-grid">
         <Card className="chart-panel">
           <CardHeader>
-            <CardTitle>{t("chart.histogramTitle")}</CardTitle>
-            <CardDescription>{filteredStats.summary}</CardDescription>
+            <CardTitle>Histogram</CardTitle>
           </CardHeader>
           <CardContent>
-            <Histogram students={filteredStudents} anonymised={anonymised} />
+            <Histogram students={filteredStudents} anonymised={anonymised} onBinClick={onHistogramClick} />
           </CardContent>
         </Card>
         <Card className="students-panel">
@@ -2276,10 +2398,6 @@ function ClassTeacherDashboardScreen({
           <h3>{t("student.cardsTitle")}</h3>
           <span>{filteredStudents.length} {t("detected.students").toLowerCase()}</span>
         </div>
-        <Button variant="outline" size="sm" type="button" onClick={() => onCompactCardsChange(!compactCards)}>
-          {compactCards ? <Maximize2 size={15} aria-hidden="true" /> : <Minimize2 size={15} aria-hidden="true" />}
-          {compactCards ? t("dashboard.roomyCards") : t("dashboard.compactCards")}
-        </Button>
       </div>
 
       <div className={cn("student-cards", "class-teacher-student-cards", compactCards && "student-cards--compact")}>
@@ -2357,7 +2475,7 @@ function ClassTeacherStudentTable({ c, students, anonymised, filters, onFiltersC
           <SortHeader field="total" label={t("student.total")} filters={filters} onFiltersChange={onFiltersChange} align="right" />
           <SortHeader field="trend" label={t("student.trend")} filters={filters} onFiltersChange={onFiltersChange} />
           <SortHeader field="mainSubjectDanger" label={c("classTeacherMainSubjectDanger")} filters={filters} onFiltersChange={onFiltersChange} />
-          <SortHeader field="flags" label={t("student.flags")} filters={filters} onFiltersChange={onFiltersChange} align="right" />
+          <SortHeader field="flags" label={c("visibleAdvice")} filters={filters} onFiltersChange={onFiltersChange} align="right" className="class-teacher-interesting-column" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -2383,7 +2501,7 @@ function ClassTeacherStudentTable({ c, students, anonymised, filters, onFiltersC
             <TableCell className="table-cell-numeric">{formatGrade(student.finalWeighted)}</TableCell>
             <TableCell>{translateTrend(student.overallTrend?.direction || "insufficient")}</TableCell>
             <TableCell>{classTeacherMainSubjectDangerLabel(student, c)}</TableCell>
-            <TableCell className="table-cell-numeric">{student.flags?.length || 0}</TableCell>
+            <TableCell className="table-cell-numeric class-teacher-interesting-column">{student.flags?.length || 0}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -2413,7 +2531,10 @@ function ClassTeacherStudentCard({
   const nextPeer = peerIndex >= 0 && peerIndex < peers.length - 1 ? peers[peerIndex + 1] : null;
   const defaultSubjects = classTeacherDefaultSubjects(student);
   const [selectedSubjects, setSelectedSubjects] = useState(defaultSubjects);
+  const [scaleMode, setScaleMode] = useState("full");
   const visibleSubjects = normaliseSelectedClassTeacherSubjects(student, selectedSubjects);
+  const summary = classTeacherStudentSummary(student, c);
+  const detailFlags = classTeacherDetailFlags(student);
 
   function toggleSubject(subject) {
     setSelectedSubjects((current) => {
@@ -2476,14 +2597,13 @@ function ClassTeacherStudentCard({
       </CardHeader>
 
       <CardContent>
-        <section className="card-section class-teacher-card-intro">
-          <p>{c("classTeacherCardIntro")}</p>
-        </section>
-
         <section className="card-section card-section--graph class-teacher-lines-section" data-tour-part="graph">
           <div className="section-row graph-section-heading">
             <h4>{t("student.visualContext")}</h4>
-            <span>{c("classTeacherOverallLine")} + {c("classTeacherSubjectLines").toLowerCase()}</span>
+            <div className="class-teacher-scale-toggle" aria-label={t("chart.yearTrend")}>
+              <Button variant={scaleMode === "full" ? "default" : "outline"} size="sm" type="button" onClick={() => setScaleMode("full")}>{c("classTeacherScaleFull")}</Button>
+              <Button variant={scaleMode === "zoom" ? "default" : "outline"} size="sm" type="button" onClick={() => setScaleMode("zoom")}>{c("classTeacherScaleZoom")}</Button>
+            </div>
           </div>
           <ClassTeacherSubjectPicker
             c={c}
@@ -2494,18 +2614,18 @@ function ClassTeacherStudentCard({
             onAllSubjects={showAllSubjects}
           />
           <p className="class-teacher-graph-hint">{c("classTeacherGraphHint")}</p>
-          <ClassTeacherLinesChart c={c} student={student} periods={analysis.periods} selectedSubjects={visibleSubjects} />
+          <ClassTeacherLinesChart c={c} student={student} periods={analysis.periods} selectedSubjects={visibleSubjects} scaleMode={scaleMode} />
         </section>
 
         <section className="card-section card-section--summary" data-tour-part="advice">
           <div className="advice-summary">
             <strong>{t("advice.summaryTitle")}</strong>
-            <p>{student.flags?.[0]?.label || c("classTeacherNoSignals")}</p>
-            <p>{student.flags?.[0]?.detail || c("classTeacherCardIntro")}</p>
+            <p>{summary.title}</p>
+            <p>{summary.body}</p>
           </div>
-          {student.flags?.length ? (
+          {detailFlags.length ? (
             <div className="flag-detail-list">
-              {student.flags.map((flag, index) => (
+              {detailFlags.map((flag, index) => (
                 <div className="flag-detail-row" key={`${flag.type}-${index}`}>
                   <Badge variant={classTeacherFlagVariant(flag.tone)}>{flag.label}</Badge>
                   <p>{flag.detail}</p>
@@ -2568,7 +2688,7 @@ function ClassTeacherSubjectPicker({ c, student, selectedSubjects, onToggle, onK
   );
 }
 
-function ClassTeacherLinesChart({ c, student, periods, selectedSubjects }) {
+function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, scaleMode = "full" }) {
   const width = 760;
   const height = 252;
   const left = 48;
@@ -2576,10 +2696,8 @@ function ClassTeacherLinesChart({ c, student, periods, selectedSubjects }) {
   const top = 28;
   const bottom = 194;
   const axisWidth = width - left - right;
-  const axisHeight = bottom - top;
   const periodList = periods || [];
   const xForIndex = (index) => left + (periodList.length <= 1 ? 0 : (index / (periodList.length - 1)) * axisWidth);
-  const yFor = (value) => bottom - (clamp(value, 0, 100) / 100) * axisHeight;
   const subjectLines = (student.subjectLines || []).filter((line) => selectedSubjects.includes(line.subject));
   const overallPoints = (student.overallTrend?.points || []).map((point) => ({
     subject: c("classTeacherOverallLine"),
@@ -2588,16 +2706,25 @@ function ClassTeacherLinesChart({ c, student, periods, selectedSubjects }) {
     value: point.value,
     isOverall: true,
   }));
+  const chartValues = [
+    ...overallPoints.map((point) => point.value),
+    ...subjectLines.flatMap((line) => (line.points || []).map((point) => point.value)),
+  ].filter(Number.isFinite);
+  const domain = classTeacherChartDomain(chartValues, scaleMode);
+  const axisHeight = bottom - top;
+  const yFor = (value) => bottom - ((clamp(value, domain.min, domain.max) - domain.min) / (domain.max - domain.min)) * axisHeight;
+  const axisTicks = classTeacherAxisTicks(domain);
+  const trendLine = classTeacherOverallTrendLine(overallPoints, periodList);
 
   return (
     <figure className="class-teacher-lines-chart">
       <svg className="chart-svg chart-svg--interactive" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("chart.yearTrend")}>
         <line x1={left} y1={top} x2={left} y2={bottom} stroke="var(--chart-axis)" />
         <line x1={left} y1={bottom} x2={width - right} y2={bottom} stroke="var(--chart-axis)" />
-        {[0, 25, 50, 75, 100].map((value) => (
+        {axisTicks.map((value) => (
           <g key={value}>
             <line x1={left - 4} y1={yFor(value)} x2={width - right} y2={yFor(value)} stroke="var(--chart-grid)" />
-            <text x="10" y={yFor(value) + 4}>{value}%</text>
+            <text x="10" y={yFor(value) + 4}>{formatNumber(value)}%</text>
           </g>
         ))}
         {periodList.map((period, index) => (
@@ -2606,6 +2733,15 @@ function ClassTeacherLinesChart({ c, student, periods, selectedSubjects }) {
             <text className="axis-label" x={xForIndex(index)} y={bottom + 28} textAnchor="middle">{shortLabel(period.label, 16)}</text>
           </g>
         ))}
+        {trendLine ? (
+          <line
+            className="class-teacher-overall-trendline"
+            x1={xForIndex(trendLine.startX)}
+            y1={yFor(trendLine.start)}
+            x2={xForIndex(trendLine.endX)}
+            y2={yFor(trendLine.end)}
+          />
+        ) : null}
         {subjectLines.map((line, index) => (
           <ClassTeacherLinePath
             key={line.subject}
@@ -2659,7 +2795,6 @@ function ClassTeacherLinePath({ line, periods, color, xForIndex, yFor, overall =
             className="class-teacher-line-dot"
             transform={`translate(${x}, ${y})`}
             tabIndex={0}
-            role="button"
             aria-label={label}
           >
             <text className="chart-svg-tooltip class-teacher-line-label" x="0" y="-14" textAnchor="middle">
@@ -3352,11 +3487,12 @@ function GraphInterpretation({ trend, embedded = false }) {
 
 function PedagogicalSummary({ student }) {
   const mainFlag = student.flags[0];
+  const nextStep = mainFlag ? pedagogicalNextStep(student.flags) : "";
   return (
     <div className="advice-summary">
       <strong>{t("advice.summaryTitle")}</strong>
       <p>{mainFlag ? mainFlag.label : t("advice.noSignal")}</p>
-      <p>{pedagogicalNextStep(student.flags)}</p>
+      {nextStep ? <p>{nextStep}</p> : null}
     </div>
   );
 }
@@ -3424,7 +3560,7 @@ function YearTrend({ trend, student, onEvaluationClick }) {
               aria-label={`${t("chart.evaluation")}: ${point.label}, ${formatNumber(point.value)}%`}
             >
               <text className="trend-dot-label chart-svg-tooltip" x={label.x} y={label.y} textAnchor={label.anchor}>
-                {shortLabel(`${point.label} - ${formatNumber(point.value)}%`, 30)}
+                {formatNumber(point.value)}%
               </text>
               <circle cx="0" cy="0" r="7" />
             </g>
@@ -3628,9 +3764,10 @@ function Histogram({ students, selected, compact = false, anonymised = false, on
   );
 }
 
-function StudentTourOverlay({ c, activeTour, onChange, onClose, onComplete }) {
+function StudentTourOverlay({ c, mode = "vakdocent", activeTour, onChange, onClose, onComplete }) {
   const [rect, setRect] = useState(null);
-  const step = activeTour ? CARD_TOUR_STEPS[activeTour.step] : null;
+  const steps = cardTourStepsForMode(mode);
+  const step = activeTour ? steps[activeTour.step] : null;
 
   useLayoutEffect(() => {
     if (!activeTour || !step) {
@@ -3674,7 +3811,12 @@ function StudentTourOverlay({ c, activeTour, onChange, onClose, onComplete }) {
 
   if (!activeTour || !step || !rect) return null;
 
-  const isLast = activeTour.step >= CARD_TOUR_STEPS.length - 1;
+  const isLast = activeTour.step >= steps.length - 1;
+  const tourEyebrow = mode === "klassenleraar"
+    ? c("classTeacherTourEyebrow")
+    : t("tour.title", { student: "" }).replace(":", "").trim();
+  const tourTitle = step.copy ? c(step.titleKey) : t(step.titleKey);
+  const tourBody = step.copy ? c(step.bodyKey) : t(step.bodyKey);
   const panelLeft = Math.min(window.innerWidth - 340, Math.max(18, rect.left));
   const panelTop = rect.top + rect.height + 18 < window.innerHeight - 170
     ? rect.top + rect.height + 18
@@ -3706,11 +3848,11 @@ function StudentTourOverlay({ c, activeTour, onChange, onClose, onComplete }) {
       <div className="tour-panel" style={{ top: panelTop, left: panelLeft }}>
         <div className="tour-panel-body" key={step.part}>
           <div className="tour-panel-meta">
-            <p className="eyebrow">{t("tour.title", { student: "" }).replace(":", "").trim()}</p>
-            <span>{t("tour.stepProgress", { current: activeTour.step + 1, total: CARD_TOUR_STEPS.length })}</span>
+            <p className="eyebrow">{tourEyebrow}</p>
+            <span>{t("tour.stepProgress", { current: activeTour.step + 1, total: steps.length })}</span>
           </div>
-          <h3 id="tour-title">{t(step.titleKey)}</h3>
-          <p>{t(step.bodyKey)}</p>
+          <h3 id="tour-title">{tourTitle}</h3>
+          <p>{tourBody}</p>
         </div>
         <div className="tour-actions">
           <Button variant="ghost" type="button" onClick={onClose}>{c("closeTour")}</Button>
@@ -4128,6 +4270,49 @@ function sortStudents(students, filters = {}) {
   });
 }
 
+function classTeacherChartDomain(values, scaleMode) {
+  const clean = values.filter(Number.isFinite);
+  if (scaleMode !== "zoom" || clean.length < 2) return { min: 0, max: 100 };
+  let min = Math.max(0, Math.floor((Math.min(...clean) - 5) / 5) * 5);
+  let max = Math.min(100, Math.ceil((Math.max(...clean) + 5) / 5) * 5);
+  if (max - min < 20) {
+    const center = (min + max) / 2;
+    min = Math.max(0, Math.floor((center - 10) / 5) * 5);
+    max = Math.min(100, Math.ceil((center + 10) / 5) * 5);
+  }
+  if (max <= min) return { min: 0, max: 100 };
+  return { min, max };
+}
+
+function classTeacherAxisTicks(domain) {
+  const step = (domain.max - domain.min) / 4;
+  return Array.from({ length: 5 }, (_, index) => Math.round((domain.min + step * index) * 10) / 10);
+}
+
+function classTeacherOverallTrendLine(points = [], periods = []) {
+  const available = points
+    .map((point) => ({
+      x: periods.findIndex((period) => period.id === point.periodId),
+      value: point.value,
+    }))
+    .filter((point) => point.x >= 0 && Number.isFinite(point.value));
+  if (available.length < 2) return null;
+  const meanX = available.reduce((sum, point) => sum + point.x, 0) / available.length;
+  const meanY = available.reduce((sum, point) => sum + point.value, 0) / available.length;
+  const denominator = available.reduce((sum, point) => sum + (point.x - meanX) ** 2, 0);
+  if (!denominator) return null;
+  const slope = available.reduce((sum, point) => sum + (point.x - meanX) * (point.value - meanY), 0) / denominator;
+  const intercept = meanY - slope * meanX;
+  const startX = available[0].x;
+  const endX = available[available.length - 1].x;
+  return {
+    startX,
+    endX,
+    start: intercept + slope * startX,
+    end: intercept + slope * endX,
+  };
+}
+
 function renderTrendExplanation(trend) {
   if (!trend || trend.direction === "unknown") return t("trendExplain.insufficient");
   const direction = ["declining", "improving", "stable"].includes(trend.direction) ? trend.direction : "stable";
@@ -4178,7 +4363,7 @@ function pedagogicalNextStep(flags) {
   if (types.has("high_volatility") || types.has("declining_trend")) return t("advice.nextConversation");
   if (types.has("low_evidence_coverage") || types.has("insufficient_decision_evidence")) return t("advice.nextEvidence");
   if (types.has("consistent_good_work") || types.has("positive_evolution")) return t("advice.nextPositive");
-  return t("advice.nextMonitor");
+  return "";
 }
 
 function formatGrade(value) {

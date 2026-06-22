@@ -365,16 +365,21 @@ function calculateTrend(student, assignments) {
 }
 
 function periodLabel(assignment, index) {
-  const text = `${assignment.sheetName || ""} ${assignment.title || ""} ${assignment.date || ""}`.toLowerCase();
-  const category = String(assignment.category || "").toUpperCase();
-  if (/par|paas|partial|partieel/.test(text)) return "EXPAR";
-  if (category === "EX" && /(kerst|sem\s*1|semester\s*1|\b1\b)/i.test(text)) return "EX1";
-  if (category === "EX" && /(eind|juni|sem\s*2|semester\s*2|\b2\b)/i.test(text)) return "EX2";
-  if (category === "EX") return "EX";
-  if (category === "DW" && /(sem\s*1|semester\s*1|\b1\b)/i.test(text)) return "DW1";
-  if (category === "DW" && /(sem\s*2|semester\s*2|\b2\b)/i.test(text)) return "DW2";
-  if (category === "DW") return `DW${index + 1}`;
-  return category || `P${index + 1}`;
+  const title = cleanEvaluationTitle(assignment.title);
+  if (title && !isBasketOnlyLabel(title)) return title;
+  return `Evaluatie ${index + 1}`;
+}
+
+function cleanEvaluationTitle(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^(?:(?:DW|EX)\d*|EXPAR|PCT|TOT)\s*[-:]?\s*/i, "")
+    .trim();
+}
+
+function isBasketOnlyLabel(value) {
+  const text = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+  return /^(DW|EX)\d*$/.test(text) || text === "EXPAR" || text === "PCT" || text === "TOT";
 }
 
 function calculateDwExamGap(categoryRows) {

@@ -6,6 +6,11 @@ export function exportProjectJson(model, config, analysis, notes = {}, filters =
   return payload;
 }
 
+export function exportJsonPayload(payload, fileName = "skore-project.json") {
+  downloadText(fileName, JSON.stringify(payload, null, 2), "application/json");
+  return payload;
+}
+
 export function buildProjectPayload(model, config, analysis, notes = {}, filters = {}, decisions = {}) {
   return {
     mode: model?.mode || analysis?.mode || "vakdocent",
@@ -126,6 +131,7 @@ export function buildClassAgendaText(analysis, anonymised = true, notes = {}, de
 }
 
 function serialiseModel(model) {
+  if (!model) return null;
   return {
     ...model,
     assignments: model.assignments.map((assignment) => ({
