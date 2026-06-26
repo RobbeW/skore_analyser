@@ -170,6 +170,7 @@ const FALLBACK_COPY = {
     classTeacherSubjectPicker: "Welke vaklijnen tonen?",
     classTeacherKeySubjectsOnly: "Hoofdvakken",
     classTeacherAllSubjects: "Alle vakken",
+    classTeacherNoSubjectLines: "Geen vaklijnen",
     classTeacherSubjectMatrix: "Vakoverzicht",
     classTeacherKeySubject: "Hoofdvak",
     classTeacherNoSignals: "Geen opvallende klassenleraar-signalen.",
@@ -261,6 +262,7 @@ const FALLBACK_COPY = {
     classTeacherSubjectPicker: "Which subject lines to show?",
     classTeacherKeySubjectsOnly: "Key subjects",
     classTeacherAllSubjects: "All subjects",
+    classTeacherNoSubjectLines: "No subject lines",
     classTeacherSubjectMatrix: "Subject overview",
     classTeacherKeySubject: "Key subject",
     classTeacherNoSignals: "No notable class-teacher signals.",
@@ -1341,9 +1343,7 @@ function classTeacherDefaultSubjects(student, onlyKeySubjects = false) {
 
 function normaliseSelectedClassTeacherSubjects(student, selectedSubjects = []) {
   const available = new Set((student.subjectLines || []).map((line) => line.subject));
-  const selected = selectedSubjects.filter((subject) => available.has(subject));
-  if (selected.length) return selected;
-  return classTeacherDefaultSubjects(student);
+  return selectedSubjects.filter((subject) => available.has(subject));
 }
 
 function classTeacherFlagVariant(tone) {
@@ -2597,6 +2597,10 @@ function ClassTeacherStudentCard({
     setSelectedSubjects((student.subjectLines || []).map((line) => line.subject));
   }
 
+  function showNoSubjects() {
+    setSelectedSubjects([]);
+  }
+
   return (
     <Card className={cn("student-card", "class-teacher-student-card", compact && "student-card--compact", isPrintTarget && "is-print-target")} id={`student-card-${student.id}`} data-student-id={student.id}>
       <CardHeader className="student-card-header" data-tour-part="total">
@@ -2658,6 +2662,7 @@ function ClassTeacherStudentCard({
             onToggle={toggleSubject}
             onKeySubjects={showKeySubjects}
             onAllSubjects={showAllSubjects}
+            onNone={showNoSubjects}
           />
           <p className="class-teacher-graph-hint">{c("classTeacherGraphHint")}</p>
           <ClassTeacherLinesChart c={c} student={student} periods={analysis.periods} selectedSubjects={visibleSubjects} scaleMode={scaleMode} />
@@ -2713,7 +2718,7 @@ function ClassTeacherStudentCard({
   );
 }
 
-function ClassTeacherSubjectPicker({ c, student, selectedSubjects, onToggle, onKeySubjects, onAllSubjects }) {
+function ClassTeacherSubjectPicker({ c, student, selectedSubjects, onToggle, onKeySubjects, onAllSubjects, onNone }) {
   const subjects = student.subjectLines || [];
   return (
     <details className="class-teacher-subject-picker">
@@ -2725,6 +2730,7 @@ function ClassTeacherSubjectPicker({ c, student, selectedSubjects, onToggle, onK
         <div className="subject-picker-actions">
           <Button variant="outline" size="sm" type="button" onClick={onKeySubjects}>{c("classTeacherKeySubjectsOnly")}</Button>
           <Button variant="outline" size="sm" type="button" onClick={onAllSubjects}>{c("classTeacherAllSubjects")}</Button>
+          <Button variant="outline" size="sm" type="button" onClick={onNone}>{c("classTeacherNoSubjectLines")}</Button>
         </div>
         <div className="subject-checkbox-grid">
           {subjects.map((line) => (
@@ -2766,7 +2772,6 @@ function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, scaleMo
   const axisHeight = bottom - top;
   const yFor = (value) => bottom - ((clamp(value, domain.min, domain.max) - domain.min) / (domain.max - domain.min)) * axisHeight;
   const axisTicks = classTeacherAxisTicks(domain);
-  const trendLine = classTeacherOverallTrendLine(overallPoints, periodList);
 
   return (
     <figure className="class-teacher-lines-chart">
@@ -2785,15 +2790,6 @@ function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, scaleMo
             <text className="axis-label" x={xForIndex(index)} y={bottom + 28} textAnchor="middle">{shortLabel(period.label, 16)}</text>
           </g>
         ))}
-        {trendLine ? (
-          <line
-            className="class-teacher-overall-trendline"
-            x1={xForIndex(trendLine.startX)}
-            y1={yFor(trendLine.start)}
-            x2={xForIndex(trendLine.endX)}
-            y2={yFor(trendLine.end)}
-          />
-        ) : null}
         {subjectLines.map((line, index) => (
           <ClassTeacherLinePath
             key={line.subject}
@@ -4472,30 +4468,6 @@ function classTeacherChartDomain(values, scaleMode) {
 function classTeacherAxisTicks(domain) {
   const step = (domain.max - domain.min) / 4;
   return Array.from({ length: 5 }, (_, index) => Math.round((domain.min + step * index) * 10) / 10);
-}
-
-function classTeacherOverallTrendLine(points = [], periods = []) {
-  const available = points
-    .map((point) => ({
-      x: periods.findIndex((period) => period.id === point.periodId),
-      value: point.value,
-    }))
-    .filter((point) => point.x >= 0 && Number.isFinite(point.value));
-  if (available.length < 2) return null;
-  const meanX = available.reduce((sum, point) => sum + point.x, 0) / available.length;
-  const meanY = available.reduce((sum, point) => sum + point.value, 0) / available.length;
-  const denominator = available.reduce((sum, point) => sum + (point.x - meanX) ** 2, 0);
-  if (!denominator) return null;
-  const slope = available.reduce((sum, point) => sum + (point.x - meanX) * (point.value - meanY), 0) / denominator;
-  const intercept = meanY - slope * meanX;
-  const startX = available[0].x;
-  const endX = available[available.length - 1].x;
-  return {
-    startX,
-    endX,
-    start: intercept + slope * startX,
-    end: intercept + slope * endX,
-  };
 }
 
 function renderTrendExplanation(trend) {
