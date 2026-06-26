@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { aggregateClassTeacherReportGroups } from "../js/class-teacher-aggregator.js";
 import { calculateClassTeacherAnalysis } from "../js/class-teacher-calculator.js";
+import { canonicalSubject, isKnownSubject } from "../js/class-teacher-config.js";
 import { parseClassTeacherReportWorkbook } from "../js/class-teacher-parser.js";
 import {
   appendSuggestionToNote,
@@ -85,12 +86,19 @@ const MAIN_SUBJECT_DANGER_FLAGS = new Set([
 main();
 
 function main() {
-  const reports = loadReports();
-  assertParserFixtures(reports);
+  const reports = loadExampleReports();
+  if (reports.length) {
+    assertParserFixtures(reports);
 
-  const analyses = aggregateClassTeacherReportGroups(reports).map((aggregation) => calculateClassTeacherAnalysis(aggregation));
-  assertAggregations(analyses);
-  assertCalculations(analyses);
+    const analyses = aggregateClassTeacherReportGroups(reports).map((aggregation) => calculateClassTeacherAnalysis(aggregation));
+    assertAggregations(analyses);
+    assertCalculations(analyses);
+  } else {
+    logPass("Parser fixtures overgeslagen: example_folder_klassenleraar niet aanwezig.");
+  }
+
+  assertSyntheticClassTeacherRegression();
+  assertSubjectAliases();
   assertNoteGuidance();
 
   if (SHOULD_BUILD) {
@@ -103,8 +111,8 @@ function main() {
   logPass("Klassenleraar regressie afgerond.");
 }
 
-function loadReports() {
-  assert(fs.existsSync(EXAMPLE_FOLDER), `Example folder not found: ${EXAMPLE_FOLDER}`);
+function loadExampleReports() {
+  if (!fs.existsSync(EXAMPLE_FOLDER)) return [];
   const files = fs.readdirSync(EXAMPLE_FOLDER)
     .filter((fileName) => fileName.toLowerCase().endsWith(".xlsx"))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -116,6 +124,124 @@ function loadReports() {
     const workbook = readWorkbook(path.join(EXAMPLE_FOLDER, fileName));
     return parseClassTeacherReportWorkbook(workbook);
   });
+}
+
+function assertSyntheticClassTeacherRegression() {
+  const reports = buildSyntheticClassTeacherReports();
+  const analyses = aggregateClassTeacherReportGroups(reports).map((aggregation) => calculateClassTeacherAnalysis(aggregation));
+  assertEqual(analyses.length, 1, "Synthetische regressie: aantal klassen");
+
+  const analysis = analyses[0];
+  assertEqual(analysis.classCode, "3NW3", "Synthetische regressie: klascode");
+  assertEqual(analysis.year, 3, "Synthetische regressie: leerjaar");
+  assertEqual(analysis.periodSchemaId, "year_3_4", "Synthetische regressie: periodeschema");
+  assertEqual(analysis.track?.id, "NW", "Synthetische regressie: richting");
+  assertEqual(analysis.totals.periodCount, 4, "Synthetische regressie: periodes");
+  assertEqual(analysis.totals.studentCount, 3, "Synthetische regressie: leerlingen");
+  assert(analysis.subjects.some((subject) => subject.subject === "Wetenschappen" && subject.known), "Synthetische regressie: WET wordt niet als Wetenschappen herkend");
+
+  assertClose(analysis.stats.mean, 60.3, "Synthetische regressie: klasgemiddelde");
+  assertEqual(analysis.stats.below65, 2, "Synthetische regressie: jaartotaal onder 65");
+  assertEqual(analysis.stats.below50, 1, "Synthetische regressie: jaartotaal onder 50");
+  assertEqual(analysis.stats.keyRiskCount, 1, "Synthetische regressie: hoofdvak in de gevarenzone");
+  assertEqual(analysis.stats.positiveProfileCount, 1, "Synthetische regressie: sterke stabiele profielen");
+
+  const byName = new Map(analysis.students.map((student) => [student.name, student]));
+  assertStudentHasFlag(byName.get("Bram Janssens"), "key_subject_critical", "Synthetische regressie: Bram hoofdvak onder 50");
+  assertStudentHasFlag(byName.get("Bram Janssens"), "multiple_key_subjects_weak", "Synthetische regressie: Bram meerdere hoofdvakken zwak");
+  assertStudentHasFlag(byName.get("Cato Peeters"), "overall_low_year", "Synthetische regressie: Cato jaartotaal onder 50");
+  assertStudentHasFlag(byName.get("Amina De Smet"), "positive_stable_profile", "Synthetische regressie: Amina positief stabiel profiel");
+
+  logPass("Synthetische klassenleraarregressie: berekeningen zonder voorbeeldbestanden.");
+}
+
+function assertSubjectAliases() {
+  assertEqual(canonicalSubject("WET"), "Wetenschappen", "Vakalias WET");
+  assert(isKnownSubject("WET"), "Vakalias WET staat niet als gekend vak geregistreerd");
+  logPass("Vakaliases: WET wordt Wetenschappen.");
+}
+
+function buildSyntheticClassTeacherReports() {
+  const periods = [
+    ["semester_1", "Semester 1"],
+    ["semester_2_prelim", "Semester 2 voorlopig resultaat"],
+    ["semester_2", "Semester 2"],
+    ["year", "Jaar"],
+  ];
+  const subjects = ["Wiskunde", "Fysica", "Nederlands", "Frans", "WET", "Engels"];
+  const students = [
+    {
+      name: "Amina De Smet",
+      overall: [76, 78, 82, 80],
+      scores: {
+        Wiskunde: [78, 79, 82, 80],
+        Fysica: [70, 74, 76, 75],
+        Nederlands: [84, 85, 86, 85],
+        Frans: [74, 75, 76, 75],
+        WET: [78, 80, 82, 81],
+        Engels: [79, 80, 81, 80],
+      },
+    },
+    {
+      name: "Bram Janssens",
+      overall: [60, 57, 55, 54],
+      scores: {
+        Wiskunde: [55, 51, 49, 48],
+        Fysica: [60, 57, 54, 52],
+        Nederlands: [62, 61, 60, 60],
+        Frans: [64, 61, 59, 58],
+        WET: [66, 64, 62, 61],
+        Engels: [65, 65, 64, 64],
+      },
+    },
+    {
+      name: "Cato Peeters",
+      overall: [52, 50, 49, 47],
+      scores: {
+        Wiskunde: [64, 63, 62, 62],
+        Fysica: [66, 65, 64, 64],
+        Nederlands: [68, 67, 66, 66],
+        Frans: [70, 69, 68, 68],
+        WET: [56, 54, 52, 50],
+        Engels: [62, 61, 60, 60],
+      },
+    },
+  ];
+
+  return periods.map(([periodId, periodLabel], periodIndex) => ({
+    fileName: `synthetic ${periodLabel}.xlsx`,
+    sheetName: "Rapport",
+    classCode: "3NW3",
+    year: 3,
+    periodSchemaId: "year_3_4",
+    periodId,
+    periodLabel,
+    trackGuess: null,
+    warnings: [],
+    subjects: subjects.map((subject) => ({
+      raw: subject,
+      canonical: canonicalSubject(subject),
+      known: isKnownSubject(subject),
+    })),
+    students: students.map((student, studentIndex) => ({
+      id: `student-${studentIndex + 1}`,
+      name: student.name,
+      overallScore: student.overall[periodIndex],
+      overallSourceMetric: "PCT",
+      subjectScores: subjects.map((subject, subjectIndex) => ({
+        subject: canonicalSubject(subject),
+        rawSubject: subject,
+        score: student.scores[subject][periodIndex],
+        sourceMetric: "PCT",
+        metrics: { PCT: student.scores[subject][periodIndex] },
+        sourceRow: 10 + studentIndex * subjects.length + subjectIndex,
+      })),
+    })),
+    totals: {
+      subjectCount: subjects.length,
+      studentCount: students.length,
+    },
+  }));
 }
 
 function assertParserFixtures(reports) {
@@ -219,6 +345,11 @@ function assertNoBlockingReportWarnings(report) {
 
 function hasMainSubjectDanger(student) {
   return (student.flags || []).some((flag) => MAIN_SUBJECT_DANGER_FLAGS.has(flag.type));
+}
+
+function assertStudentHasFlag(student, flagType, label) {
+  assert(student, `${label}: leerling ontbreekt`);
+  assert((student.flags || []).some((flag) => flag.type === flagType), `${label}: vlag ${flagType} ontbreekt`);
 }
 
 function runViteBuild() {
