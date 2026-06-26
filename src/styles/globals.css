@@ -1706,15 +1706,6 @@ h4 {
   opacity: 0.32;
 }
 
-.class-teacher-overall-trendline {
-  stroke: var(--primary);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-dasharray: 8 7;
-  opacity: 0.92;
-  filter: drop-shadow(0 3px 6px rgba(82, 0, 255, 0.16));
-}
-
 .class-teacher-line-group path {
   stroke-width: 2.2;
   stroke-linecap: round;

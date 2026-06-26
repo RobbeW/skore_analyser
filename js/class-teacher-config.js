@@ -168,6 +168,8 @@ export const SUBJECT_ALIASES = new Map([
   ["SPAANS", "Spaans"],
   ["TE", "Techniek"],
   ["TECHNIEK", "Techniek"],
+  ["WET", "Wetenschappen"],
+  ["WETENSCHAPPEN", "Wetenschappen"],
   ["WIS", "Wiskunde"],
   ["WISKUNDE", "Wiskunde"],
 ]);
