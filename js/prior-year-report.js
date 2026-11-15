@@ -207,3 +207,93 @@ export function priorClassPosition(item) {
   const below = order.slice(0, order.indexOf(item.ownBand)).reduce((sum, band) => sum + (item.classDistribution[band] || 0), 0);
   return { below, total, share: below / total };
 }
+
+// ---------------------------------------------------------------------------
+// Advice of last year's deliberating class council
+// ---------------------------------------------------------------------------
+
+const ADVICE_STOPWORDS = new Set(["de", "het", "een", "en", "studierichting", "richting", "finaliteit", "doorstroom", "domeinoverschrijdende", "met", "verdieping"]);
+
+// Abbreviations that can show up in an advice ("EW-STEaM", "HW").
+const TRACK_ALIASES = {
+  ew: "economische wetenschappen",
+  hw: "humane wetenschappen",
+  nw: "natuurwetenschappen",
+  mt: "moderne talen",
+  mtw: "moderne talen wetenschappen",
+  la: "latijn",
+  gl: "grieks latijn",
+  tc: "taal cultuur",
+  steam: "steam",
+};
+
+function adviceTokens(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .flatMap((token) => (TRACK_ALIASES[token] && token !== "steam" ? TRACK_ALIASES[token].split(" ") : [token]))
+    .filter((token) => token && !ADVICE_STOPWORDS.has(token));
+}
+
+const cleanTrack = (value) => String(value || "").replace(/\s+/g, " ").replace(/[\s,.;:]+$/, "").trim();
+
+/**
+ * Reads the free-text advice of last year's class council.
+ * Returns { kind, tracks, openToOthers, otherHint, condition } where kind is
+ * "supports" (backs the pupil's own choice), "recommends" (names a track),
+ * "against" (advises against / reorientation) or "unknown".
+ */
+export function classifyPriorAdvice(text) {
+  const advice = String(text || "").replace(/\s+/g, " ").trim();
+  const result = { kind: "unknown", tracks: [], openToOthers: false, otherHint: "", condition: "" };
+  if (!advice) return result;
+  // Where a track name ends: "in j3", "en wenst ...", "mits ...", "of een andere ...", or the sentence end.
+  const stop = String.raw`(?=\s+in\s+(?:j|het\s)\S*|\s+en\s+wenst|\s+mits\b|\s+of\s+een\b|[.;]|$)`;
+
+  const condition = advice.match(/\bmits\s+(.+?)(?:[.;]|$)/i);
+  if (condition) result.condition = cleanTrack(condition[1]);
+
+  const supports = advice.match(new RegExp(String.raw`ondersteunt\s+(?:jouw|je|uw|zijn|haar)\s+(?:studie)?keuze(?:\s+voor\s+(.+?)${stop})?`, "i"));
+  const recommends = advice.match(new RegExp(String.raw`adviseert\s+(?:de|een|het)?\s*(?:studierichting|richting|finaliteit|studiedomein)\s+(.+?)${stop}`, "i"));
+  const against = /\braadt\b.*\baf\b|afgeraden|\bniet\s+(?:aan\s+te\s+raden|geschikt)|herori[eë]nt/i.test(advice);
+
+  if (supports) {
+    result.kind = "supports";
+    if (supports[1]) result.tracks.push(cleanTrack(supports[1]));
+  } else if (recommends) {
+    result.kind = "recommends";
+    result.tracks.push(...recommends[1].split(/\s+of\s+(?:de\s+)?(?:studierichting\s+)?(?!een\b)/i).map(cleanTrack).filter(Boolean));
+  } else if (against) {
+    result.kind = "against";
+  }
+
+  const other = advice.match(/of\s+een\s+andere\s+(?:studie)?richting\s*(.*?)(?=\s+in\s+(?:j|het\s)\S*|\s+mits\b|[.;]|$)/i);
+  if (other) {
+    result.openToOthers = true;
+    result.otherHint = cleanTrack(other[1]);
+  }
+  return result;
+}
+
+/**
+ * True when the current track is (one of) the advised track(s).
+ * "Economische wetenschappen met verdieping STEaM" matches "Economische Wetenschappen"
+ * but not "Economische Wetenschappen Taal & Cultuur" (a different verdieping).
+ */
+export function trackMatchesAdvice(trackLabel, advisedTrack) {
+  const [basePart, verdiepingPart = ""] = String(advisedTrack || "").split(/\s+met\s+verdieping\s+/i);
+  const base = adviceTokens(basePart);
+  const current = adviceTokens(trackLabel);
+  if (!base.length || !current.length) return false;
+  const has = (token) => current.some((word) => word === token || word.startsWith(token) || token.startsWith(word));
+  if (!base.every(has)) return false;
+  const verdieping = adviceTokens(verdiepingPart);
+  const extras = current.filter((word) => !base.some((token) => word === token || word.startsWith(token) || token.startsWith(word)));
+  if (verdieping.length && extras.length && !verdieping.some((token) => extras.includes(token))) return false;
+  return true;
+}

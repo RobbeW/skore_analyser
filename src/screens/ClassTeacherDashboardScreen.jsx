@@ -70,7 +70,7 @@ import { SlideIndicator, useChartReveal } from "../lib/use-motion.jsx";
 import { ClassTeacherNoticeList } from "./ClassTeacherReviewScreen.jsx";
 import { PriorCell, PriorSignalList, PriorYearButton, priorYearSignals } from "../components/prior-year.jsx";
 import { priorValueFor } from "../../js/prior-year-report.js";
-import { ClassCouncilPrint, ClassHeatmap, FlagWithHandling, MeetingMode, SubjectFeedbackList, feedbackForStudent, isDiscussionStudent } from "../components/class-council.jsx";
+import { AlarmSummary, ClassCouncilPrint, ClassHeatmap, FlagRow, MeetingMode, SubjectFeedbackList, feedbackForStudent, discussionContext, isDiscussionStudent } from "../components/class-council.jsx";
 
 export function ClassTeacherDashboardScreen({
   c,
@@ -116,7 +116,7 @@ export function ClassTeacherDashboardScreen({
   ), [dashboardFilters, students]);
   const stats = analysis.stats || {};
   const mainSubjectDangerStudents = students.filter(classTeacherHasMainSubjectDanger);
-  const discussionStudents = students.filter(isDiscussionStudent);
+  const discussionStudents = students.filter((student) => isDiscussionStudent(student, discussionContext(student, analysis, priorYear)));
   // Same rule as the filter it opens, so the number always matches the list.
   const keyRiskCount = mainSubjectDangerStudents.length;
   const positiveCount = students.filter((student) => student.flags?.some((flag) => flag.type === "positive_stable_profile")).length;
@@ -205,6 +205,7 @@ export function ClassTeacherDashboardScreen({
         </CardHeader>
         <CardContent>
           <ClassHeatmap
+            priorYear={priorYear}
             c={c}
             analysis={analysis}
             students={filteredStudents}
@@ -297,7 +298,7 @@ export function ClassTeacherDashboardScreen({
         onOpenNoteSuggestion={onOpenNoteSuggestion}
       />
 
-      <ClassCouncilPrint c={c} analysis={analysis} students={students} anonymised={anonymised} notes={notes} decisions={decisions} />
+      <ClassCouncilPrint c={c} analysis={analysis} students={students} anonymised={anonymised} notes={notes} decisions={decisions} priorYear={priorYear} />
     </section>
   );
 }
@@ -489,21 +490,16 @@ export function ClassTeacherStudentCard({
         <section className="card-section card-section--summary" data-tour-part="advice">
           <div className="advice-summary">
             <strong>{t("advice.summaryTitle")}</strong>
-            <p>{summary.body}</p>
+            <AlarmSummary summary={summary} />
           </div>
           {detailFlags.length ? (
             <div className="flag-detail-list">
               {detailFlags.map((flag, index) => (
-                <FlagWithHandling
-                  key={`${flag.type}-${index}`}
-                  flag={flag}
-                  state={decision.flagStates?.[flag.type] || null}
-                  onChange={(value) => onDecisionChange?.(student.id, { flagStates: { ...(decision.flagStates || {}), [flag.type]: value } })}
-                />
+                <FlagRow key={`${flag.type}-${index}`} flag={flag} />
               ))}
             </div>
           ) : null}
-          <PriorSignalList signals={priorYearSignals(student, prior)} />
+          <PriorSignalList signals={priorYearSignals(student, prior, { trackLabel: analysis.track?.label })} />
           <SubjectFeedbackList entries={feedbackEntries} />
         </section>
 

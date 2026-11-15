@@ -372,38 +372,47 @@ export function classTeacherMainSubjectDangerLabel(student, c) {
   return dangerSubjects.length > 3 ? `${visible} +${dangerSubjects.length - 3}` : visible;
 }
 
+export const ALARM_THRESHOLD = 60;
+
+/**
+ * Subjects below the alarm threshold, lowest first, split into hoofdvakken and other subjects.
+ * Parts of a subject ("Frans kennis", "Frans vaardigheden") are nested under "Frans" when
+ * Frans itself is in the alarm zone, so one subject is not listed three times.
+ */
 export function classTeacherSubjectAlarmLists(student) {
-  const mainSubjects = [];
-  const otherSubjects = [];
-  for (const line of student.subjectLines || []) {
-    const score = scoreForClassTeacherLine(line);
-    if (!Number.isFinite(score) || score >= 60) continue;
-    const entry = `${line.subject} ${formatNumber(score)}%`;
-    if (line.isKeySubject) {
-      mainSubjects.push(entry);
-    } else {
-      otherSubjects.push(entry);
-    }
+  const alarm = (student.subjectLines || [])
+    .map((line) => ({ subject: line.subject, score: scoreForClassTeacherLine(line), isKey: Boolean(line.isKeySubject), parts: [] }))
+    .filter((item) => Number.isFinite(item.score) && item.score < ALARM_THRESHOLD);
+  const parentOf = (item) => alarm.find((other) => other !== item && item.subject.startsWith(`${other.subject} `));
+  const top = [];
+  for (const item of alarm) {
+    const parent = parentOf(item);
+    if (parent) parent.parts.push({ label: item.subject.slice(parent.subject.length + 1), score: item.score });
+    else top.push(item);
   }
-  return { mainSubjects, otherSubjects };
+  const byScore = (a, b) => a.score - b.score;
+  for (const item of top) item.parts.sort(byScore);
+  return {
+    mainSubjects: top.filter((item) => item.isKey).sort(byScore),
+    otherSubjects: top.filter((item) => !item.isKey).sort(byScore),
+  };
 }
 
 export function classTeacherStudentSummary(student, c) {
   const { mainSubjects, otherSubjects } = classTeacherSubjectAlarmLists(student);
-  const parts = [];
-  if (mainSubjects.length) {
-    parts.push(c("classTeacherSummaryMainSubjects", { subjects: mainSubjects.join(", ") }));
-  }
-  if (otherSubjects.length) {
-    parts.push(c("classTeacherSummaryOtherSubjects", { subjects: otherSubjects.join(", ") }));
-  } else if (mainSubjects.length) {
-    parts.push(c("classTeacherSummaryNoOtherSubjects"));
-  }
+  const groups = [
+    { id: "main", label: c("classTeacherSummaryMainLabel"), items: mainSubjects },
+    { id: "other", label: c("classTeacherSummaryOtherLabel"), items: otherSubjects },
+  ].filter((group) => group.items.length);
+  // Plain-text version for print and tables.
+  const asText = (item) => `${item.subject} ${formatNumber(item.score)}`;
+  const body = groups.map((group) => `${group.label}: ${group.items.map(asText).join(" · ")}`).join(" | ");
   return {
     title: student.flags?.length
       ? c("classTeacherSummaryAttention", { count: student.flags.length })
       : c("classTeacherSummaryGood"),
-    body: parts.join(" ") || c("classTeacherNoSignals"),
+    groups,
+    body: body || c("classTeacherNoSignals"),
   };
 }
 

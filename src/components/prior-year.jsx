@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { t } from "../../js/i18n.js";
-import { priorClassPosition, priorValueFor } from "../../js/prior-year-report.js";
+import { classifyPriorAdvice, priorClassPosition, priorValueFor, trackMatchesAdvice } from "../../js/prior-year-report.js";
 import { formatNumber } from "../lib/app-helpers.jsx";
 import { scoreForClassTeacherLine } from "../lib/class-teacher-helpers.jsx";
 
@@ -92,9 +92,43 @@ export function PriorYearNameDialog({ data, onConfirm, onCancel }) {
 }
 
 /** Deterministic prior-year signals for one class-teacher pupil (hoofdvakken only). */
-export function priorYearSignals(student, prior) {
-  if (!prior) return [];
+/**
+ * Signals from last year's class-council advice. Comparing the advised track with the
+ * current one is the important part: following another track than advised is a concern.
+ */
+export function priorAdviceSignals(prior, trackLabel) {
+  const advice = classifyPriorAdvice(prior?.decision?.advies);
   const signals = [];
+  if (advice.kind === "against") {
+    signals.push({ type: "prior_advice_against", tone: "critical", label: t("prior.signalAdviceAgainst"), detail: prior.decision.advies });
+  }
+  if (advice.tracks.length && trackLabel) {
+    const followed = advice.tracks.some((track) => trackMatchesAdvice(trackLabel, track));
+    if (!followed) {
+      // "X of een andere studierichting met ..." leaves room for other tracks: caution instead of critical.
+      signals.push({
+        type: "prior_advice_mismatch",
+        tone: advice.openToOthers ? "caution" : "critical",
+        label: t("prior.signalAdviceMismatch"),
+        detail: t(advice.openToOthers ? "prior.signalAdviceMismatchOpenDetail" : "prior.signalAdviceMismatchDetail", {
+          advised: advice.tracks.join(" / "),
+          hint: advice.otherHint,
+          current: trackLabel,
+        }),
+      });
+    } else if (advice.kind === "supports" && !advice.condition) {
+      signals.push({ type: "prior_advice_followed", tone: "positive", label: t("prior.signalAdviceFollowed"), detail: t("prior.signalAdviceFollowedDetail", { advised: advice.tracks.join(" / ") }) });
+    }
+  }
+  if (advice.condition) {
+    signals.push({ type: "prior_advice_condition", tone: "caution", label: t("prior.signalAdviceCondition"), detail: advice.condition });
+  }
+  return signals;
+}
+
+export function priorYearSignals(student, prior, { trackLabel = "" } = {}) {
+  if (!prior) return [];
+  const signals = priorAdviceSignals(prior, trackLabel);
   for (const line of student.subjectLines || []) {
     if (!line.isKeySubject) continue;
     const before = priorValueFor(prior, line.subject);
@@ -115,12 +149,21 @@ export function PriorSignalList({ signals }) {
     <div className="prior-signals">
       {signals.map((signal, index) => (
         <div key={`${signal.type}-${index}`} className="flag-detail-row__main">
-          <Badge variant={signal.tone === "critical" ? "destructive" : "warning"}>{signal.label}</Badge>
+          <Badge variant={signal.tone === "critical" ? "destructive" : signal.tone === "positive" ? "success" : "warning"}>{signal.label}</Badge>
           <p>{signal.detail}</p>
         </div>
       ))}
     </div>
   );
+}
+
+/** Positive / conditional / negative label for last year's advice text. */
+function AdviceKindBadge({ advice }) {
+  const { kind, condition, openToOthers } = classifyPriorAdvice(advice);
+  if (kind === "unknown") return null;
+  const tone = kind === "against" ? "against" : kind === "supports" && !condition ? "positive" : kind === "supports" ? "conditional" : openToOthers || condition ? "redirect" : "recommends";
+  const variant = { positive: "success", conditional: "warning", redirect: "warning", recommends: "secondary", against: "destructive" }[tone];
+  return <Badge variant={variant}>{t(`prior.adviceKind.${tone}`)}</Badge>;
 }
 
 /** Klassenraad mode only: last year's result and the decision of the deliberating class council. */
@@ -134,7 +177,12 @@ export function PriorYearDecision({ prior }) {
         <div><dt>{t("prior.overall")}</dt><dd>{pct(prior.overall?.tot)}</dd></div>
         {decision.beslissing ? <div><dt>{t("prior.beslissing")}</dt><dd>{decision.beslissing}</dd></div> : null}
         {decision.studiebewijs ? <div><dt>{t("prior.studiebewijs")}</dt><dd>{decision.studiebewijs}</dd></div> : null}
-        {decision.advies ? <div className="prior-decision__wide"><dt>{t("prior.advies")}</dt><dd>{decision.advies}</dd></div> : null}
+        {decision.advies ? (
+          <div className="prior-decision__wide">
+            <dt>{t("prior.advies")} <AdviceKindBadge advice={decision.advies} /></dt>
+            <dd>{decision.advies}</dd>
+          </div>
+        ) : null}
       </dl>
     </section>
   );

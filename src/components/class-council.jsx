@@ -17,8 +17,8 @@ import { loadedPeriods, periodShortLabel,
   scoreForClassTeacherLine,
 } from "../lib/class-teacher-helpers.jsx";
 import { useEnter, useStagger } from "../lib/use-motion.jsx";
-import { DECISION_STATUSES, FLAG_STATES, normaliseName } from "../lib/teacher-decisions.js";
-import { PriorCell, PriorSignalList, PriorYearDecision, priorYearSignals } from "./prior-year.jsx";
+import { DECISION_STATUSES, normaliseName } from "../lib/teacher-decisions.js";
+import { PriorCell, PriorSignalList, PriorYearDecision, priorAdviceSignals, priorYearSignals } from "./prior-year.jsx";
 
 export function heatTone(score) {
   if (!Number.isFinite(score)) return "empty";
@@ -27,11 +27,20 @@ export function heatTone(score) {
   return "ok";
 }
 
-/** Pupils who belong on the bespreeklijst: hoofdvak in danger, year below 65, or any critical signal. */
-export function isDiscussionStudent(student) {
+/**
+ * Pupils who belong on the bespreeklijst: hoofdvak in danger, year below 65, any critical signal,
+ * or (with last year's report) a negative advice or a track other than the one advised.
+ */
+export function isDiscussionStudent(student, { prior = null, trackLabel = "" } = {}) {
   return classTeacherHasMainSubjectDanger(student)
     || (Number.isFinite(student.finalWeighted) && student.finalWeighted < 65)
-    || (student.flags || []).some((flag) => flag.tone === "critical");
+    || (student.flags || []).some((flag) => flag.tone === "critical")
+    || priorAdviceSignals(prior, trackLabel).some((signal) => signal.type === "prior_advice_mismatch" || signal.type === "prior_advice_against");
+}
+
+/** Bespreeklijst check with the class context (prior-year reports and current track). */
+export function discussionContext(student, analysis, priorYear = {}) {
+  return { prior: priorYear[student.id] || null, trackLabel: analysis?.track?.label || "" };
 }
 
 function displayName(student, anonymised) {
@@ -53,7 +62,7 @@ function subjectHasFeedback(feedback, student, subject) {
   ));
 }
 
-export function ClassHeatmap({ c, analysis, students, anonymised, feedback, decisions = {}, onOpenStudent }) {
+export function ClassHeatmap({ c, analysis, students, anonymised, feedback, decisions = {}, priorYear = {}, onOpenStudent }) {
   const subjects = analysis.subjects || [];
   const signature = `${students.length}-${subjects.length}`;
   const bodyRef = useStagger("tr", signature, { step: 18 });
@@ -97,7 +106,7 @@ export function ClassHeatmap({ c, analysis, students, anonymised, feedback, deci
           </thead>
           <tbody ref={bodyRef}>
             {students.map((student) => {
-              const status = decisions[student.id]?.status || (isDiscussionStudent(student) ? "open" : "none");
+              const status = decisions[student.id]?.status || (isDiscussionStudent(student, discussionContext(student, analysis, priorYear)) ? "open" : "none");
               return (
                 <tr key={student.id}>
                   <th scope="row" className="heatmap__name">
@@ -175,25 +184,37 @@ function SubjectMiniTable({ student, periods, prior = null }) {
   );
 }
 
-export function FlagWithHandling({ flag, state, onChange }) {
+/** Alarm-zone subjects as rows of score chips (lowest first) instead of one long sentence. */
+export function AlarmSummary({ summary }) {
+  if (!summary.groups?.length) return <p className="muted">{summary.body}</p>;
   return (
-    <div className={cn("flag-detail-row", state && "is-handled")}>
+    <div className="alarm-summary">
+      {summary.groups.map((group) => (
+        <div className="alarm-summary__group" key={group.id}>
+          <span className="alarm-summary__label">{group.label}</span>
+          <ul className="alarm-summary__chips">
+            {group.items.map((item) => (
+              <li key={item.subject} className={cn("alarm-chip", `heat--${heatTone(item.score)}`)}>
+                <span>{item.subject}</span>
+                <strong>{formatNumber(item.score)}</strong>
+                {item.parts.length ? (
+                  <small>{item.parts.map((part) => `${part.label} ${formatNumber(part.score)}`).join(" · ")}</small>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function FlagRow({ flag }) {
+  return (
+    <div className="flag-detail-row">
       <div className="flag-detail-row__main">
         <Badge variant={classTeacherFlagVariant(flag.tone)}>{flag.label}</Badge>
         <p>{flag.detail}</p>
-      </div>
-      <div className="flag-handling" role="group" aria-label={t("flagState.label", { flag: flag.label })}>
-        {FLAG_STATES.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={cn("flag-handling__btn", state === option && "is-active")}
-            aria-pressed={state === option}
-            onClick={() => onChange(state === option ? null : option)}
-          >
-            {t(`flagState.${option}`)}
-          </button>
-        ))}
       </div>
     </div>
   );
@@ -259,7 +280,7 @@ export function MeetingMode({
 
   if (!student) return null;
   const decision = decisions[student.id] || {};
-  const status = decision.status || (isDiscussionStudent(student) ? "open" : "none");
+  const status = decision.status || (isDiscussionStudent(student, discussionContext(student, analysis, priorYear)) ? "open" : "none");
   const summary = classTeacherStudentSummary(student, c);
   const flags = classTeacherDetailFlags(student);
   const keyFlags = (student.flags || []).filter((flag) => !flags.includes(flag));
@@ -307,21 +328,16 @@ export function MeetingMode({
           <div className="meeting__grid">
             <section className="meeting__panel">
               <h3>{t("advice.summaryTitle")}</h3>
-              <p>{summary.body}</p>
+              <AlarmSummary summary={summary} />
               {keyFlags.length ? (
                 <div className="chip-row">
                   {keyFlags.map((flag, i) => <Badge key={`${flag.type}-${i}`} variant={classTeacherFlagVariant(flag.tone)}>{flag.label}</Badge>)}
                 </div>
               ) : null}
               {flags.map((flag, i) => (
-                <FlagWithHandling
-                  key={`${flag.type}-${i}`}
-                  flag={flag}
-                  state={decision.flagStates?.[flag.type] || null}
-                  onChange={(value) => onDecisionChange(student.id, { flagStates: { ...(decision.flagStates || {}), [flag.type]: value } })}
-                />
+                <FlagRow key={`${flag.type}-${i}`} flag={flag} />
               ))}
-              <PriorSignalList signals={priorYearSignals(student, prior)} />
+              <PriorSignalList signals={priorYearSignals(student, prior, { trackLabel: analysis.track?.label })} />
               <SubjectFeedbackList entries={feedbackEntries} />
               <PriorYearDecision prior={prior} />
             </section>
@@ -376,10 +392,10 @@ export function MeetingMode({
 }
 
 /** Print-only class overview: heatmap summary and bespreeklijst. Shown when the shell has .is-printing-overview. */
-export function ClassCouncilPrint({ c, analysis, students, anonymised, notes, decisions }) {
+export function ClassCouncilPrint({ c, analysis, students, anonymised, notes, decisions, priorYear = {} }) {
   const discussion = students.filter((student) => {
     const status = decisions[student.id]?.status;
-    return status === "open" || status === "followup" || (!status && isDiscussionStudent(student));
+    return status === "open" || status === "followup" || (!status && isDiscussionStudent(student, discussionContext(student, analysis, priorYear)));
   });
   const keySubjects = (analysis.subjects || []).filter((subject) => subject.isKeySubject);
   return (

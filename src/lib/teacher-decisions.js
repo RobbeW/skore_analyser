@@ -1,8 +1,7 @@
 // Teacher judgement kept apart from calculated evidence: per-pupil status, agreed
-// action, flag handling, and the subject-teacher handover file (vakfeedback).
+// action, and the subject-teacher handover file (vakfeedback).
 
 export const DECISION_STATUSES = ["open", "discussed", "followup"];
-export const FLAG_STATES = ["handled", "nuance", "irrelevant"];
 export const FEEDBACK_KIND = "skore-subject-feedback";
 export const FEEDBACK_VERSION = 1;
 
@@ -19,12 +18,6 @@ export function normaliseName(value) {
     .join(" ");
 }
 
-/** True when a flag was marked handled/irrelevant, so it no longer competes with open signals. */
-export function isFlagSettled(decision, flagType) {
-  const state = decision?.flagStates?.[flagType];
-  return state === "handled" || state === "irrelevant";
-}
-
 /** Builds the vakfeedback payload a subject teacher hands to the class teacher. */
 export function buildSubjectFeedbackPayload({ subject, teacher = "", students = [], notes = {}, decisions = {}, flagLabel = (flag) => flag.label || flag.type }) {
   return {
@@ -34,13 +27,12 @@ export function buildSubjectFeedbackPayload({ subject, teacher = "", students = 
     subject,
     teacher,
     students: students.map((student) => {
-      const decision = decisions[student.id] || {};
       return {
         name: student.name,
         classCode: student.classCode,
         total: Number.isFinite(student.finalWeighted) ? Math.round(student.finalWeighted * 10) / 10 : null,
         signals: (student.flags || [])
-          .filter((flag) => flag.tone !== "positive" && !isFlagSettled(decision, flag.type))
+          .filter((flag) => flag.tone !== "positive")
           .map(flagLabel),
         positives: (student.flags || []).filter((flag) => flag.tone === "positive").map(flagLabel),
         note: String(notes[student.id] || "").trim(),

@@ -13,7 +13,7 @@ import {
 } from "../js/note-guidance.js";
 import { readWorkbook } from "./workbook-reader.js";
 import { buildSubjectFeedbackPayload, normaliseName, parseSubjectFeedback } from "../src/lib/teacher-decisions.js";
-import { parsePriorYearReport, priorClassPosition, priorValueFor } from "../js/prior-year-report.js";
+import { classifyPriorAdvice, parsePriorYearReport, priorClassPosition, priorValueFor, trackMatchesAdvice } from "../js/prior-year-report.js";
 import { applySchoolWeightsToAggregation, builtInWeightTables, findSchoolWeights, parseWeightsText, schoolBasketPreset, weightedOverall } from "../js/school-weights.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -377,7 +377,21 @@ function assertPriorYearReport() {
   let rejected = false;
   try { parsePriorYearReport([{ runs: [run("Iets anders", 10, 10)] }]); } catch { rejected = true; }
   assert(rejected, "Vorig jaar: ander PDF wordt geweigerd");
-  logPass("Vorig jaar: jaarrapport inlezen, voorlopers en klassenraadbeslissing.");
+
+  const supports = classifyPriorAdvice("De klassenraad ondersteunt jouw studiekeuze voor Economische wetenschappen met verdieping STEaM in j3 en wenst jou hierbij alle succes toe!");
+  assertEqual(supports.kind, "supports", "Advies: positief advies herkend");
+  assertEqual(supports.tracks.join("|"), "Economische wetenschappen met verdieping STEaM", "Advies: gesteunde richting");
+  const redirect = classifyPriorAdvice("De klassenraad adviseert de studierichting Humane Wetenschappen of een andere studierichting met een minder sterke component wiskunde in j3 mits volgehouden en verhoogde studie-inzet voor alle vakken.");
+  assertEqual(redirect.kind, "recommends", "Advies: richtingsadvies herkend");
+  assertEqual(redirect.tracks.join("|"), "Humane Wetenschappen", "Advies: geadviseerde richting");
+  assert(redirect.openToOthers, "Advies: andere richting toegelaten");
+  assertEqual(redirect.condition, "volgehouden en verhoogde studie-inzet voor alle vakken", "Advies: voorwaarde");
+  assertEqual(classifyPriorAdvice("De klassenraad raadt de studierichting Latijn af.").kind, "against", "Advies: negatief advies");
+  assert(trackMatchesAdvice("Economische Wetenschappen", supports.tracks[0]), "Advies: EW volgt EW-STEaM");
+  assert(!trackMatchesAdvice("Economische Wetenschappen Taal & Cultuur", supports.tracks[0]), "Advies: andere verdieping telt niet");
+  assert(trackMatchesAdvice("Humane Wetenschappen", redirect.tracks[0]), "Advies: HW volgt HW");
+  assert(!trackMatchesAdvice("Economische Wetenschappen", redirect.tracks[0]), "Advies: EW volgt HW niet");
+  logPass("Vorig jaar: jaarrapport inlezen, voorlopers, klassenraadbeslissing en advies.");
 }
 
 function assertSubjectFeedbackHandover() {
@@ -389,13 +403,12 @@ function assertSubjectFeedbackHandover() {
       { id: "a", name: "Amina De Smet", classCode: "3NW3", finalWeighted: 48.26, flags: [{ type: "below_threshold", label: "Onder cesuur", tone: "critical" }, { type: "high_volatility", label: "Wisselend", tone: "caution" }] },
     ],
     notes: { a: "Breuken herhalen." },
-    decisions: { a: { flagStates: { high_volatility: "irrelevant" } } },
   });
   const parsed = parseSubjectFeedback(JSON.parse(JSON.stringify(payload)));
   const item = parsed.students[normaliseName("Amina De Smet")];
   assert(item, "Vakfeedback: leerling teruggevonden");
   assertEqual(item.total, 48.3, "Vakfeedback: totaal afgerond");
-  assertEqual(item.signals.join("|"), "Onder cesuur", "Vakfeedback: afgehandelde signalen vallen weg");
+  assertEqual(item.signals.join("|"), "Onder cesuur|Wisselend", "Vakfeedback: signalen gaan mee");
   assertEqual(item.note, "Breuken herhalen.", "Vakfeedback: notitie");
   let rejected = false;
   try {

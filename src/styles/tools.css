@@ -283,17 +283,6 @@
   margin: 0;
 }
 
-.flag-detail-row.is-handled .flag-detail-row__main {
-  opacity: 0.6;
-}
-
-.flag-handling {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-.flag-handling__btn,
 .status-picker__btn {
   padding: 0.15rem 0.6rem;
   border: 1px solid var(--border);
@@ -307,16 +296,9 @@
   transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
 }
 
-.flag-handling__btn:hover,
 .status-picker__btn:hover {
   border-color: var(--primary);
   color: var(--foreground);
-}
-
-.flag-handling__btn.is-active {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--primary-foreground);
 }
 
 /* Subject feedback */
@@ -577,8 +559,7 @@
   .heatmap-panel,
   .handover-panel,
   .council-actions,
-  .class-tiles,
-  .flag-handling {
+  .class-tiles {
     display: none !important;
   }
 
@@ -821,24 +802,71 @@
   margin: 0.2rem auto 0;
 }
 
-/* Signal follow-up buttons only on hover/focus, or when one was chosen. */
-.flag-detail-row .flag-handling {
-  opacity: 0;
-  transition: opacity var(--motion-fast) var(--ease-standard);
+
+/* Alarm-zone summary: one row per group, score chips lowest first */
+.alarm-summary {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
 }
 
-.flag-detail-row:hover .flag-handling,
-.flag-detail-row:focus-within .flag-handling,
-.flag-detail-row.is-handled .flag-handling {
-  opacity: 1;
+.alarm-summary__group {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) 1fr;
+  align-items: start;
+  gap: 0.5rem;
 }
 
-.flag-detail-row.is-handled:not(:hover):not(:focus-within) .flag-handling__btn:not(.is-active) {
-  display: none;
+.alarm-summary__label {
+  padding-top: 0.3rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
-@media (hover: none) {
-  .flag-detail-row .flag-handling {
-    opacity: 1;
+.alarm-summary__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alarm-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.45rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+}
+
+.alarm-chip span {
+  font-weight: 600;
+}
+
+.alarm-chip strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.alarm-chip small {
+  flex-basis: 100%;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+@media (max-width: 560px) {
+  .alarm-summary__group {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .alarm-summary__label {
+    padding-top: 0;
   }
 }

@@ -61,7 +61,7 @@ import { DotPlot, MiniHistogram, QuartileStrip } from "./charts.jsx";
 import { DEFAULT_OPEN_CARD_SECTIONS, SCHOOL_YEAR_DOMAIN_END, SCHOOL_YEAR_MONTHS } from "../lib/app-constants.jsx";
 import { anonymousName, chartPointLabelPosition, clamp, evidenceParticipationContext, formatAvailablePoints, formatGrade, formatNumber, formatPercent, isExamPoint, linearTrendLineForPoints, pedagogicalNextStep, positionTrendPoints, renderTrendExplanation, renderVolatilityExplanation, sortStudents } from "../lib/app-helpers.jsx";
 import { CountUp, useChartReveal } from "../lib/use-motion.jsx";
-import { FlagWithHandling } from "./class-council.jsx";
+import { FlagRow } from "./class-council.jsx";
 import { PriorYearButton } from "./prior-year.jsx";
 import { priorValueFor } from "../../js/prior-year-report.js";
 import { canonicalSubject } from "../../js/class-teacher-config.js";
@@ -308,12 +308,7 @@ export function StudentCard({
           {student.flags.length ? (
             <div className="flag-detail-list">
               {student.flags.map((flag, index) => (
-                <FlagWithHandling
-                  key={`${flag.type}-${index}`}
-                  flag={flag}
-                  state={decision.flagStates?.[flag.type] || null}
-                  onChange={(value) => onDecisionChange?.(student.id, { flagStates: { ...(decision.flagStates || {}), [flag.type]: value } })}
-                />
+                <FlagRow key={`${flag.type}-${index}`} flag={flag} />
               ))}
             </div>
           ) : null}
