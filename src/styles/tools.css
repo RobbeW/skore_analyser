@@ -870,3 +870,13 @@
     padding-top: 0;
   }
 }
+
+/* Meeting mode: jaarrapport button sits next to the total, name takes the free space */
+.meeting__head > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.meeting__head .prior-year-control {
+  align-self: center;
+}

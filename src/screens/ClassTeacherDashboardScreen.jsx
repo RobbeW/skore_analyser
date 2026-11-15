@@ -296,6 +296,8 @@ export function ClassTeacherDashboardScreen({
         onNoteChange={onNoteChange}
         onDecisionChange={onDecisionChange}
         onOpenNoteSuggestion={onOpenNoteSuggestion}
+        onUploadPriorYear={onUploadPriorYear}
+        onRemovePriorYear={onRemovePriorYear}
       />
 
       <ClassCouncilPrint c={c} analysis={analysis} students={students} anonymised={anonymised} notes={notes} decisions={decisions} priorYear={priorYear} />

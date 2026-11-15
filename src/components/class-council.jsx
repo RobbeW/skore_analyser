@@ -18,7 +18,7 @@ import { loadedPeriods, periodShortLabel,
 } from "../lib/class-teacher-helpers.jsx";
 import { useEnter, useStagger } from "../lib/use-motion.jsx";
 import { DECISION_STATUSES, normaliseName } from "../lib/teacher-decisions.js";
-import { PriorCell, PriorSignalList, PriorYearDecision, priorAdviceSignals, priorYearSignals } from "./prior-year.jsx";
+import { PriorCell, PriorSignalList, PriorYearButton, PriorYearDecision, priorAdviceSignals, priorYearSignals } from "./prior-year.jsx";
 
 export function heatTone(score) {
   if (!Number.isFinite(score)) return "empty";
@@ -257,6 +257,8 @@ export function MeetingMode({
   onNoteChange,
   onDecisionChange,
   onOpenNoteSuggestion,
+  onUploadPriorYear,
+  onRemovePriorYear,
 }) {
   const student = students[index];
   const contentRef = useEnter(student?.id || "none", { y: 6 });
@@ -319,6 +321,9 @@ export function MeetingMode({
                 {analysis.classCode} · {analysis.track?.label || t("option.notAvailable")}
               </DialogDescription>
             </div>
+            {onUploadPriorYear ? (
+              <PriorYearButton student={student} prior={prior} displayName={name} onUpload={onUploadPriorYear} onRemove={onRemovePriorYear} compact />
+            ) : null}
             <div className={cn("meeting__total", `heat--${heatTone(student.finalWeighted)}`)}>
               <span className="meeting__total-label">{t("student.total")}</span>
               <strong>{formatGrade(student.finalWeighted)}</strong>
