@@ -12,6 +12,7 @@ import {
   generateSubjectTeacherNoteSuggestion,
 } from "../js/note-guidance.js";
 import { readWorkbook } from "./workbook-reader.js";
+import { buildSubjectFeedbackPayload, normaliseName, parseSubjectFeedback } from "../src/lib/teacher-decisions.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EXAMPLE_FOLDER = path.join(ROOT, "example_folder_klassenleraar");
@@ -100,6 +101,8 @@ function main() {
   assertSyntheticClassTeacherRegression();
   assertSubjectAliases();
   assertNoteGuidance();
+  assertMidYearClassCouncil();
+  assertSubjectFeedbackHandover();
 
   if (SHOULD_BUILD) {
     runViteBuild();
@@ -153,6 +156,44 @@ function assertSyntheticClassTeacherRegression() {
   assertStudentHasFlag(byName.get("Amina De Smet"), "positive_stable_profile", "Synthetische regressie: Amina positief stabiel profiel");
 
   logPass("Synthetische klassenleraarregressie: berekeningen zonder voorbeeldbestanden.");
+}
+
+function assertMidYearClassCouncil() {
+  // A December class council has only the first report: the analysis must still work.
+  const firstReport = buildSyntheticClassTeacherReports().slice(0, 1);
+  const [analysis] = aggregateClassTeacherReportGroups(firstReport).map((aggregation) => calculateClassTeacherAnalysis(aggregation));
+  assertEqual(analysis.totals.periodCount, 1, "Tussentijdse klassenraad: 1 periode");
+  assertEqual(analysis.totals.expectedPeriodCount, 4, "Tussentijdse klassenraad: 4 verwachte periodes");
+  assertEqual(analysis.totals.studentCount, 3, "Tussentijdse klassenraad: leerlingen");
+  assert(analysis.students.every((student) => Number.isFinite(student.finalWeighted)), "Tussentijdse klassenraad: elke leerling heeft een totaal");
+  logPass("Tussentijdse klassenraad: analyse met 1 rapport.");
+}
+
+function assertSubjectFeedbackHandover() {
+  assertEqual(normaliseName("De Smet Amina"), normaliseName("Amina  De Smét"), "Vakfeedback: naamkoppeling negeert volgorde en accenten");
+  const payload = buildSubjectFeedbackPayload({
+    subject: "Wiskunde",
+    teacher: "Test",
+    students: [
+      { id: "a", name: "Amina De Smet", classCode: "3NW3", finalWeighted: 48.26, flags: [{ type: "below_threshold", label: "Onder cesuur", tone: "critical" }, { type: "high_volatility", label: "Wisselend", tone: "caution" }] },
+    ],
+    notes: { a: "Breuken herhalen." },
+    decisions: { a: { flagStates: { high_volatility: "irrelevant" } } },
+  });
+  const parsed = parseSubjectFeedback(JSON.parse(JSON.stringify(payload)));
+  const item = parsed.students[normaliseName("Amina De Smet")];
+  assert(item, "Vakfeedback: leerling teruggevonden");
+  assertEqual(item.total, 48.3, "Vakfeedback: totaal afgerond");
+  assertEqual(item.signals.join("|"), "Onder cesuur", "Vakfeedback: afgehandelde signalen vallen weg");
+  assertEqual(item.note, "Breuken herhalen.", "Vakfeedback: notitie");
+  let rejected = false;
+  try {
+    parseSubjectFeedback({ kind: "iets-anders", students: [] });
+  } catch {
+    rejected = true;
+  }
+  assert(rejected, "Vakfeedback: onbekend bestand wordt geweigerd");
+  logPass("Vakfeedback: export, import en naamkoppeling.");
 }
 
 function assertSubjectAliases() {

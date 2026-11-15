@@ -46,7 +46,8 @@ export function calculateAnalysis(model, config) {
 export function summariseStudents(students, threshold = DEFAULT_THRESHOLD) {
   const values = students.map((student) => student.finalWeighted).filter(Number.isFinite).sort((a, b) => a - b);
   const belowThreshold = students.filter((student) => Number.isFinite(student.finalWeighted) && student.finalWeighted < threshold).length;
-  const incomplete = students.filter((student) => student.evidenceCoverage < 1).length;
+  // Same rule as the card signal: clearly less evidence than classmates (one missing test is normal).
+  const incomplete = students.filter((student) => (student.flags || []).some((item) => item.type === "low_evidence_coverage")).length;
 
   return {
     count: students.length,
