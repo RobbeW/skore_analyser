@@ -366,3 +366,10 @@ export const defaultFilters = () => ({
   sortDirection: "asc",
   threshold: 50,
 });
+
+// Parked features: hidden in the interface until they are built further.
+export const FEATURES = {
+  decision: false, // Besluit (bespreekstatus + afspraak) in meeting mode
+  subjectFeedback: false, // vakfeedback importeren
+  printOverview: false, // bespreeklijst afdrukken
+};

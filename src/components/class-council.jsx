@@ -17,6 +17,7 @@ import { loadedPeriods, periodShortLabel,
   scoreForClassTeacherLine,
 } from "../lib/class-teacher-helpers.jsx";
 import { useEnter, useStagger } from "../lib/use-motion.jsx";
+import { FEATURES } from "../lib/app-constants.jsx";
 import { DECISION_STATUSES, normaliseName } from "../lib/teacher-decisions.js";
 import { PriorCell, PriorSignalList, PriorYearButton, PriorYearDecision, priorAdviceSignals, priorYearSignals } from "./prior-year.jsx";
 
@@ -354,6 +355,8 @@ export function MeetingMode({
           </div>
 
           <section className="meeting__panel meeting__decision">
+            {FEATURES.decision ? (
+            <>
             <div className="meeting__decision-row">
               <h3>{t("decision.title")}</h3>
               <div className="status-picker" role="group" aria-label={t("decision.title")}>
@@ -379,6 +382,8 @@ export function MeetingMode({
                 placeholder={t("decision.actionPlaceholder")}
               />
             </label>
+            </>
+            ) : null}
             <label className="meeting__field">
               <span className="meeting__field-head">
                 {t("student.teacherJudgement")}

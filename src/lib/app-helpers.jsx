@@ -437,12 +437,12 @@ export function renderVolatilityExplanation(trend) {
   }
   if (trend.volatility < 16) {
     return isEnglish
-      ? `Volatility is ${volatility}: the scores move noticeably. Check whether one assessment, topic, absence, or preparation moment explains the difference.`
-      : `Volatiliteit is ${volatility}: de punten schommelen merkbaar. Kijk of een bepaalde toets, leerstof, afwezigheid of voorbereiding het verschil verklaart.`;
+      ? `Volatility is ${volatility}: the scores move noticeably.`
+      : `Volatiliteit is ${volatility}: de punten schommelen merkbaar.`;
   }
   return isEnglish
-    ? `Volatility is ${volatility}: the scores jump strongly between assessments. Use this as a conversation starter about planning, test format, stress, absence, or gaps in prerequisite knowledge.`
-    : `Volatiliteit is ${volatility}: de punten springen sterk tussen evaluaties. Gebruik dit als gespreksstarter over planning, toetsvorm, stress, afwezigheid of gaten in voorkennis.`;
+    ? `Volatility is ${volatility}: the scores jump strongly between assessments.`
+    : `Volatiliteit is ${volatility}: de punten springen sterk tussen evaluaties.`;
 }
 
 export function volatilityMeaningKey(value) {
@@ -450,16 +450,6 @@ export function volatilityMeaningKey(value) {
   if (value < 8) return "volatilityLow";
   if (value < 16) return "volatilityMedium";
   return "volatilityHigh";
-}
-
-export function pedagogicalNextStep(flags) {
-  const types = new Set(flags.map((flag) => flag.type));
-  if (types.has("year_total_below_50")) return t("advice.nextOrientation");
-  if (types.has("year_total_below_65") || types.has("below_threshold")) return t("advice.nextRemediation");
-  if (types.has("high_volatility") || types.has("declining_trend")) return t("advice.nextConversation");
-  if (types.has("low_evidence_coverage") || types.has("insufficient_decision_evidence")) return t("advice.nextEvidence");
-  if (types.has("consistent_good_work") || types.has("positive_evolution")) return t("advice.nextPositive");
-  return "";
 }
 
 export function formatGrade(value) {

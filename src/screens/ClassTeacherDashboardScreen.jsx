@@ -63,7 +63,7 @@ import { Histogram } from "../components/charts.jsx";
 import { EmptyState } from "../components/layout.jsx";
 import { FlowIndicator } from "../components/setup-parts.jsx";
 import { SortHeader, StatCard } from "../components/student-card.jsx";
-import { CLASS_TEACHER_LINE_COLORS } from "../lib/app-constants.jsx";
+import { CLASS_TEACHER_LINE_COLORS, FEATURES } from "../lib/app-constants.jsx";
 import { anonymousName, clamp, classTeacherAxisTicks, classTeacherChartDomain, formatGrade, formatNumber, shortLabel, unique } from "../lib/app-helpers.jsx";
 import { loadedPeriods, periodShortLabel, classTeacherDefaultSubjects, classTeacherDetailFlags, classTeacherFlagVariant, classTeacherHasMainSubjectDanger, classTeacherMainSubjectDangerLabel, classTeacherPolishNotices, classTeacherStudentSummary, filterClassTeacherStudents, normaliseSelectedClassTeacherSubjects, sortClassTeacherStudents } from "../lib/class-teacher-helpers.jsx";
 import { SlideIndicator, useChartReveal } from "../lib/use-motion.jsx";
@@ -155,22 +155,26 @@ export function ClassTeacherDashboardScreen({
         </div>
 
         <div className="council-actions">
-          <Button type="button" onClick={() => startMeeting(discussionStudents.length ? discussionStudents : filteredStudents)}>
+          {/* The class council walks through every pupil of the class, in name order. */}
+          <Button type="button" onClick={() => startMeeting(students)}>
             <Presentation size={16} aria-hidden="true" />
-            {t("meeting.start", { count: discussionStudents.length || filteredStudents.length })}
+            {t("meeting.start", { count: students.length })}
           </Button>
-          <Button variant="outline" type="button" onClick={() => startMeeting(filteredStudents)}>
-            {t("meeting.startAll", { count: filteredStudents.length })}
-          </Button>
-          <Button variant="outline" type="button" onClick={onPrintOverview}>
-            <Printer size={16} aria-hidden="true" />
-            {t("print.overviewButton")}
-          </Button>
-          <input ref={feedbackInputRef} className="sr-only" type="file" accept=".json,application/json" multiple onChange={handleFeedbackFiles} />
-          <Button variant="ghost" type="button" onClick={() => feedbackInputRef.current?.click()}>
-            <MessageSquareText size={16} aria-hidden="true" />
-            {feedbackCount ? t("feedback.importMore", { count: feedbackCount }) : t("feedback.import")}
-          </Button>
+          {FEATURES.printOverview ? (
+            <Button variant="outline" type="button" onClick={onPrintOverview}>
+              <Printer size={16} aria-hidden="true" />
+              {t("print.overviewButton")}
+            </Button>
+          ) : null}
+          {FEATURES.subjectFeedback ? (
+            <>
+              <input ref={feedbackInputRef} className="sr-only" type="file" accept=".json,application/json" multiple onChange={handleFeedbackFiles} />
+              <Button variant="ghost" type="button" onClick={() => feedbackInputRef.current?.click()}>
+                <MessageSquareText size={16} aria-hidden="true" />
+                {feedbackCount ? t("feedback.importMore", { count: feedbackCount }) : t("feedback.import")}
+              </Button>
+            </>
+          ) : null}
         </div>
         {feedbackMessage ? <p className="council-message" role="status">{feedbackMessage}</p> : null}
 

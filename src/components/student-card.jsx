@@ -59,7 +59,7 @@ import {
 } from "../../js/storage.js";
 import { DotPlot, MiniHistogram, QuartileStrip } from "./charts.jsx";
 import { DEFAULT_OPEN_CARD_SECTIONS, SCHOOL_YEAR_DOMAIN_END, SCHOOL_YEAR_MONTHS } from "../lib/app-constants.jsx";
-import { anonymousName, chartPointLabelPosition, clamp, evidenceParticipationContext, formatAvailablePoints, formatGrade, formatNumber, formatPercent, isExamPoint, linearTrendLineForPoints, pedagogicalNextStep, positionTrendPoints, renderTrendExplanation, renderVolatilityExplanation, sortStudents } from "../lib/app-helpers.jsx";
+import { anonymousName, chartPointLabelPosition, clamp, evidenceParticipationContext, formatAvailablePoints, formatGrade, formatNumber, formatPercent, isExamPoint, linearTrendLineForPoints, positionTrendPoints, renderTrendExplanation, renderVolatilityExplanation, sortStudents } from "../lib/app-helpers.jsx";
 import { CountUp, useChartReveal } from "../lib/use-motion.jsx";
 import { FlagRow } from "./class-council.jsx";
 import { PriorYearButton } from "./prior-year.jsx";
@@ -477,12 +477,10 @@ export function GraphInterpretation({ trend, embedded = false }) {
 
 export function PedagogicalSummary({ student }) {
   const mainFlag = student.flags[0];
-  const nextStep = mainFlag ? pedagogicalNextStep(student.flags) : "";
   return (
     <div className="advice-summary">
       <strong>{t("advice.summaryTitle")}</strong>
       <p>{mainFlag ? mainFlag.label : t("advice.noSignal")}</p>
-      {nextStep ? <p>{nextStep}</p> : null}
     </div>
   );
 }
