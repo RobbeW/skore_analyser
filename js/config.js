@@ -17,21 +17,21 @@ export const THRESHOLD_BANDS = [
 ];
 
 export const CATEGORY_COLORS = {
-  DW: "#5200FF",
-  EX: "#b45309",
-  TOT: "#330099",
-  PCT: "#5200FF",
+  DW: "#001E2D",
+  EX: "#7A4B00",
+  TOT: "#006394",
+  PCT: "#001E2D",
   OTHER: "#64748b",
 };
 
 export const BRAND_COLORS = {
-  purple: "#5200FF",
-  purpleInk: "#330099",
-  purpleSoft: "#efe7ff",
+  purple: "#001E2D",
+  purpleInk: "#006394",
+  purpleSoft: "#EEF3F6",
   axis: "#94a3b8",
   text: "#334155",
   muted: "#475569",
-  danger: "#b91c1c",
+  danger: "#B3261E",
   neutral: "#64748b",
 };
 

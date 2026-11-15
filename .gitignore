@@ -7,4 +7,6 @@ dist/
 .server_stderr.log
 .env
 .env.*
+example_data/**/*.xlsx
 example_data/*.xlsx
+example_data/**/*.pdf

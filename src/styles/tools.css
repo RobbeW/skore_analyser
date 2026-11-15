@@ -1,0 +1,844 @@
+/* Klastitularis & vakleerkracht tools: class tiles, heatmap, meeting mode, flag handling,
+   subject feedback, print overview. Uses the tokens from globals.css. */
+
+.council-actions,
+.handover {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.council-message {
+  margin: 0 0 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.handover {
+  margin: 0;
+  gap: 0.75rem 1rem;
+}
+
+.handover__text {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.handover__text p {
+  margin: 0.15rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.handover__field {
+  flex: 0 1 14rem;
+}
+
+.handover-panel {
+  margin: 1rem 0;
+  border-left: 4px solid var(--brand-accent-soft);
+}
+
+/* Class tiles (subject teacher) */
+.class-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.class-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+}
+
+.class-tile:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary);
+}
+
+.class-tile.is-active {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.class-tile__name {
+  font-weight: 700;
+}
+
+.class-tile__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.class-tile__value small {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.class-tile__facts {
+  display: grid;
+  gap: 0.05rem;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.class-tile__facts strong {
+  color: var(--foreground);
+}
+
+.class-tile__facts .is-alert strong {
+  color: var(--destructive);
+}
+
+/* Heat colours: always paired with the number itself */
+.heat--over { background: #FDECEA; color: #B3261E; font-weight: 700; }
+.heat--cap { background: #FFF4D6; color: #7A4B00; font-weight: 600; }
+.heat--ok { background: transparent; color: var(--foreground); }
+.heat--empty { color: var(--muted-foreground); }
+
+.heatmap__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.heatmap__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.heat-chip {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.heat-chip--over { background: #FDECEA; border-color: #B3261E; }
+.heat-chip--cap { background: #FFF4D6; border-color: #7A4B00; }
+.heat-chip--ok { background: var(--card); }
+
+.heat-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 3px;
+  vertical-align: super;
+  border-radius: 50%;
+  background: var(--brand-primary-hover);
+}
+
+.heatmap__scroll {
+  /* Whole class visible: only scroll sideways when there are many subjects. */
+  overflow-x: auto;
+  overflow-y: visible;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+}
+
+.heatmap__table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.heatmap__table th,
+.heatmap__table td {
+  padding: 0.2rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.heatmap__table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-weight: 600;
+  vertical-align: bottom;
+}
+
+.heatmap__table thead th small {
+  display: block;
+  color: var(--primary-hover);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.heatmap__table thead th.is-key {
+  color: var(--foreground);
+}
+
+.heatmap__table .heatmap__name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 11rem;
+  background: var(--card);
+  font-weight: 600;
+  text-align: left;
+}
+
+.heatmap__table thead .heatmap__name {
+  z-index: 3;
+}
+
+.heatmap__table td.is-key {
+  border-left: 1px solid var(--border);
+}
+
+.heatmap__table .heatmap__total {
+  border-right: 1px solid var(--border);
+  font-weight: 700;
+}
+
+.heatmap__table tfoot th,
+.heatmap__table tfoot td {
+  position: sticky;
+  bottom: 0;
+  border-top: 2px solid var(--border);
+  background: var(--secondary);
+  font-weight: 600;
+}
+
+.heat-count.is-hot {
+  color: #B3261E;
+  font-weight: 700;
+}
+
+.heatmap__hint {
+  margin: 0.5rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-hover);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.status-chip {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-chip--open { border-color: var(--warning); background: var(--warning-soft); color: var(--warning); }
+.status-chip--followup { border-color: var(--primary-hover); background: var(--brand-tint); color: var(--primary-hover); }
+.status-chip--discussed { border-color: var(--success); background: var(--success-soft); color: var(--success); }
+
+/* Flag handling */
+.flag-detail-row {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.flag-detail-row__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+}
+
+.flag-detail-row__main p {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.flag-detail-row.is-handled .flag-detail-row__main {
+  opacity: 0.6;
+}
+
+.flag-handling {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.flag-handling__btn,
+.status-picker__btn {
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+}
+
+.flag-handling__btn:hover,
+.status-picker__btn:hover {
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+
+.flag-handling__btn.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Subject feedback */
+.feedback-list {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand-primary-hover);
+  border-radius: var(--radius-small);
+  background: var(--card);
+}
+
+.feedback-list h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.9375rem;
+}
+
+.feedback-list ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-list p {
+  margin: 0.15rem 0 0;
+}
+
+.feedback-list__score {
+  margin-left: 0.4rem;
+  font-weight: 700;
+}
+
+.feedback-list__signals {
+  color: var(--warning);
+  font-size: 0.8125rem;
+}
+
+/* Meeting mode */
+.ui-dialog-content.meeting {
+  width: min(1100px, calc(100vw - 2rem));
+  max-width: none;
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  overflow: auto;
+  border-radius: 16px;
+}
+
+.meeting__bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 4px solid var(--brand-accent);
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.meeting__counter {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.meeting__progress {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.meeting__progress span {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  transform-origin: left;
+  transition: transform var(--motion-medium) var(--ease-standard);
+}
+
+.meeting__nav {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.meeting__body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.meeting__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.meeting__name {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.meeting__meta {
+  margin: 0.15rem 0 0;
+  color: var(--muted-foreground);
+}
+
+.meeting__total {
+  display: grid;
+  justify-items: end;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.meeting__total-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.meeting__total strong {
+  font-size: 2rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.meeting__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.meeting__panel {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.meeting__panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.meeting__panel p {
+  margin: 0;
+}
+
+.meeting__summary-title {
+  font-weight: 600;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.meeting-subjects {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.meeting-subjects th,
+.meeting-subjects td {
+  padding: 0.3rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
+.meeting-subjects th[scope="row"] {
+  font-weight: 500;
+  text-align: left;
+}
+
+.meeting-subjects tr.is-key th[scope="row"] {
+  font-weight: 700;
+}
+
+.meeting__decision-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.status-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.status-picker__btn {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.875rem;
+}
+
+.status-picker__btn--open.is-active { border-color: var(--warning); background: var(--warning-soft); color: var(--warning); }
+.status-picker__btn--discussed.is-active { border-color: var(--success); background: var(--success-soft); color: var(--success); }
+.status-picker__btn--followup.is-active { border-color: var(--primary-hover); background: var(--brand-tint); color: var(--primary-hover); }
+
+.meeting__field {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.meeting__field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.meeting__field .ui-input,
+.meeting__field textarea {
+  font-weight: 400;
+}
+
+.meeting__keys {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 760px) {
+  .meeting__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .meeting__progress {
+    display: none;
+  }
+}
+
+/* Print-only class overview */
+.print-overview {
+  display: none;
+}
+
+@media print {
+  .heatmap-panel,
+  .handover-panel,
+  .council-actions,
+  .class-tiles,
+  .flag-handling {
+    display: none !important;
+  }
+
+  .app-shell.is-printing-overview .student-cards {
+    display: none !important;
+  }
+
+  .app-shell.is-printing-overview .print-overview {
+    display: block;
+    font-size: 9.5pt;
+  }
+
+  .print-overview__head h1 {
+    margin: 0;
+    font-size: 16pt;
+  }
+
+  .print-overview__stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4mm;
+    margin: 4mm 0;
+  }
+
+  .print-overview__stats dt {
+    color: #444;
+    font-size: 8pt;
+  }
+
+  .print-overview__stats dd {
+    margin: 0;
+    font-size: 14pt;
+    font-weight: 700;
+  }
+
+  .print-overview__table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .print-overview__table th,
+  .print-overview__table td {
+    padding: 1.5mm 2mm;
+    border: 1px solid #9ca3af;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .print-overview__table tr {
+    break-inside: avoid;
+  }
+
+  .print-overview__note {
+    min-width: 40mm;
+  }
+}
+
+/* ===== Prior school year ===== */
+.prior-year-control {
+  display: inline-flex;
+  align-items: center;
+}
+
+.prior-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 34px;
+  padding: 0.2rem 0.35rem 0.2rem 0.7rem;
+  border: 1px solid var(--brand-accent-soft);
+  border-radius: 999px;
+  background: var(--brand-tint);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.prior-chip__remove {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+
+.prior-chip__remove:hover {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+/* Chart: "Vorig jaar" slot, hollow dots and a dashed link into this year */
+.prior-slot__divider {
+  stroke: var(--chart-axis);
+  stroke-dasharray: 3 4;
+}
+
+.prior-slot__label {
+  font-style: italic;
+}
+
+.prior-point__link {
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+  opacity: 0.7;
+}
+
+.prior-point.is-lead-in {
+  opacity: 0.45;
+}
+
+.prior-point.is-lead-in .prior-point__link {
+  stroke-dasharray: 2 5;
+}
+
+/* Tables */
+.prior-column {
+  border-right: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--brand-tint) 60%, transparent);
+}
+
+.prior-cell.is-lead-in {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.prior-signals {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+/* Klassenraad mode only: last year's decision */
+.prior-decision {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand-accent-soft);
+  border-radius: var(--radius-small);
+  background: var(--card);
+}
+
+.prior-decision h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.prior-decision h4 .muted {
+  font-weight: 500;
+}
+
+.prior-decision dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+
+.prior-decision dt {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.prior-decision dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.prior-decision__wide {
+  grid-column: 1 / -1;
+}
+
+.prior-decision__wide dd {
+  font-weight: 400;
+}
+
+/* Subject teacher: one line above the chart and a reference line in it */
+.prior-subject {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+}
+
+.prior-subject.is-lead-in {
+  color: var(--muted-foreground);
+}
+
+.prior-delta.is-down {
+  color: var(--destructive);
+  font-weight: 600;
+}
+
+.prior-delta.is-up {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.prior-reference line {
+  stroke: var(--brand-primary-hover);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  opacity: 0.8;
+}
+
+.prior-reference text {
+  fill: var(--brand-primary-hover);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media print {
+  .prior-year-control button,
+  .prior-chip__remove {
+    display: none !important;
+  }
+}
+
+/* Minimal labels: a dot marks a hoofdvak (explained once in the class-overview legend). */
+.key-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.heatmap__table thead th .key-dot {
+  display: block;
+  margin: 0.2rem auto 0;
+}
+
+/* Signal follow-up buttons only on hover/focus, or when one was chosen. */
+.flag-detail-row .flag-handling {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+.flag-detail-row:hover .flag-handling,
+.flag-detail-row:focus-within .flag-handling,
+.flag-detail-row.is-handled .flag-handling {
+  opacity: 1;
+}
+
+.flag-detail-row.is-handled:not(:hover):not(:focus-within) .flag-handling__btn:not(.is-active) {
+  display: none;
+}
+
+@media (hover: none) {
+  .flag-detail-row .flag-handling {
+    opacity: 1;
+  }
+}

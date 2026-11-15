@@ -13,6 +13,11 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 5173,
+    // Pupil workbooks are test data, not source: watching them crashes Vite on Windows
+    // when Excel or Explorer holds a lock (EBUSY).
+    watch: {
+      ignored: ["**/example_data/**", "**/example_folder_klassenleraar/**"],
+    },
   },
   preview: {
     host: "127.0.0.1",

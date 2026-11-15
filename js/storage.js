@@ -145,3 +145,26 @@ export function saveProjectDraft(workspaceKey, payload) {
     };
   }
 }
+
+/** Removes the notes of one workspace (used by "Reset"). */
+export function clearWorkspaceNotes(workspaceKey) {
+  try {
+    const allNotes = JSON.parse(localStorage.getItem(NOTES_KEY) || "{}");
+    delete allNotes[workspaceKey];
+    localStorage.setItem(NOTES_KEY, JSON.stringify(allNotes));
+    const allDecisions = JSON.parse(localStorage.getItem(DECISIONS_KEY) || "{}");
+    delete allDecisions[workspaceKey];
+    localStorage.setItem(DECISIONS_KEY, JSON.stringify(allDecisions));
+  } catch {
+    // Storage unavailable: nothing to clear.
+  }
+}
+
+/** Older versions silently stored full project payloads (pupil names and scores). Remove them. */
+export function purgeLegacyProjectDrafts() {
+  try {
+    localStorage.removeItem(PROJECT_DRAFTS_KEY);
+  } catch {
+    // Storage unavailable.
+  }
+}
