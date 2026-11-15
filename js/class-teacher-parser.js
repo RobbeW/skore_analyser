@@ -4,6 +4,7 @@ import {
   inferTrackFromClassCode,
   inferYearFromClassCode,
   isKnownSubject,
+  isSubjectComponent,
   normaliseReportMetric,
   periodSchemaForYear,
 } from "./class-teacher-config.js";
@@ -49,6 +50,7 @@ export function parseClassTeacherReportWorkbook(workbook, options = {}) {
     periodSchemaId: periodSchema?.id || null,
     periodId: period?.id || null,
     periodLabel: period?.label || "",
+    overallEstimated: !columns.overallGroup && students.some((student) => student.overallSourceMetric === "VAKGEMIDDELDE"),
     trackGuess,
     subjects: columns.subjectGroups.map((group) => ({
       raw: group.rawSubject,
@@ -200,11 +202,25 @@ function extractStudents(sheet, layout, columns, period, warnings) {
       };
     });
 
+    // No overall total in the report (e.g. Dagelijks werk): plain average over subjects,
+    // leaving out sub-parts such as Frans kennis/vaardigheden so nothing counts twice.
+    let overallScore = overall.score;
+    let overallSourceMetric = overall.sourceMetric;
+    if (!columns.overallGroup && !Number.isFinite(overallScore)) {
+      const values = subjectScores
+        .filter((score) => !isSubjectComponent(score.subject) && Number.isFinite(score.score))
+        .map((score) => score.score);
+      if (values.length) {
+        overallScore = Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
+        overallSourceMetric = "VAKGEMIDDELDE";
+      }
+    }
+
     students.push({
       id: stableStudentId(name),
       name,
-      overallScore: overall.score,
-      overallSourceMetric: overall.sourceMetric,
+      overallScore,
+      overallSourceMetric,
       subjectScores,
       sourceRow: rowIndex + 1,
     });

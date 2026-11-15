@@ -212,6 +212,7 @@ export function MappingScreen({
             <div className="form-grid">
               <Field label={t("mapping.basketPreset")}>
                 <Select value={config.basketPreset || "custom"} onChange={(event) => onApplyBasketPreset(event.target.value)}>
+                  {config.schoolPreset ? <option value="school">{config.schoolPreset.label}</option> : null}
                   {Object.entries(BASKET_PRESETS).filter(([, preset]) => !preset.hidden).map(([key, preset]) => (
                     <option key={key} value={key}>{presetLabel(preset)}</option>
                   ))}

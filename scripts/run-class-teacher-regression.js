@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { aggregateClassTeacherReportGroups } from "../js/class-teacher-aggregator.js";
 import { calculateClassTeacherAnalysis } from "../js/class-teacher-calculator.js";
-import { canonicalSubject, isKnownSubject } from "../js/class-teacher-config.js";
+import { canonicalSubject, inferPeriodFromText, isKnownSubject, periodSchemaForYear } from "../js/class-teacher-config.js";
 import { parseClassTeacherReportWorkbook } from "../js/class-teacher-parser.js";
 import {
   appendSuggestionToNote,
@@ -13,6 +13,7 @@ import {
 } from "../js/note-guidance.js";
 import { readWorkbook } from "./workbook-reader.js";
 import { buildSubjectFeedbackPayload, normaliseName, parseSubjectFeedback } from "../src/lib/teacher-decisions.js";
+import { applySchoolWeightsToAggregation, builtInWeightTables, findSchoolWeights, parseWeightsText, schoolBasketPreset, weightedOverall } from "../js/school-weights.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EXAMPLE_FOLDER = path.join(ROOT, "example_folder_klassenleraar");
@@ -102,6 +103,8 @@ function main() {
   assertSubjectAliases();
   assertNoteGuidance();
   assertMidYearClassCouncil();
+  assertInterimReports();
+  assertSchoolWeights();
   assertSubjectFeedbackHandover();
 
   if (SHOULD_BUILD) {
@@ -167,6 +170,158 @@ function assertMidYearClassCouncil() {
   assertEqual(analysis.totals.studentCount, 3, "Tussentijdse klassenraad: leerlingen");
   assert(analysis.students.every((student) => Number.isFinite(student.finalWeighted)), "Tussentijdse klassenraad: elke leerling heeft een totaal");
   logPass("Tussentijdse klassenraad: analyse met 1 rapport.");
+}
+
+function assertInterimReports() {
+  const schema = periodSchemaForYear(3);
+  const cases = [
+    ["3NW4 Dagelijks Werk 1.xlsx", "dw_1"],
+    ["3NW4 Dagelijks werk 3.xlsx", "dw_3"],
+    ["3NW4 Klassenraad 1.xlsx", "kr_1"],
+    ["3NW3 Semester 2 - voorlopig resultaat.xlsx", "semester_2_prelim"],
+    ["3NW3 Semester 1.xlsx", "semester_1"],
+    ["3NW3 Jaarrapport.xlsx", "year"],
+  ];
+  for (const [fileName, expected] of cases) {
+    assertEqual(inferPeriodFromText(fileName, schema)?.id || null, expected, `Tussentijdse rapporten: periode voor ${fileName}`);
+  }
+  assertEqual(canonicalSubject("FrKen"), "Frans kennis", "Tussentijdse rapporten: FrKen");
+  assertEqual(canonicalSubject("DTAI"), "Design Thinking", "Tussentijdse rapporten: DTAI");
+
+  const reports = buildSyntheticClassTeacherReports().slice(0, 3).map((report, index) => ({
+    ...report,
+    fileName: `synthetic Dagelijks werk ${index + 1}.xlsx`,
+    periodId: `dw_${index + 1}`,
+    periodLabel: `Dagelijks werk ${index + 1}`,
+  }));
+  const [analysis] = aggregateClassTeacherReportGroups(reports).map((aggregation) => calculateClassTeacherAnalysis(aggregation));
+  assertEqual(analysis.totals.interimPeriodCount, 3, "Tussentijdse rapporten: 3 DW-rapporten");
+  assertEqual(analysis.totals.expectedPeriodCount, 4, "Tussentijdse rapporten: DW telt niet als verwacht rapport");
+  assert(!analysis.periods.some((period) => period.id === "dw_4"), "Tussentijdse rapporten: ontbrekende DW-rapporten verschijnen niet");
+  assertEqual(analysis.periods.slice(0, 3).map((period) => period.id).join(","), "dw_1,dw_2,dw_3", "Tussentijdse rapporten: volgorde");
+  logPass("Tussentijdse rapporten: Dagelijks werk en Klassenraad herkend.");
+}
+
+function assertSchoolWeights() {
+  const tables = builtInWeightTables().filter((table) => table.grade === 1);
+  assertEqual(tables.length, 7, "Schoolgewichten: 7 tabellen graad 1");
+  for (const table of tables) {
+    assert(table.trackId, `Schoolgewichten: richting gekend voor ${table.trackCode}`);
+    assertEqual(table.totals.total, 102, `Schoolgewichten: totaal 102 voor ${table.trackCode}`);
+    assert(table.subjects.every((item) => item.total === item.hours * 3), `Schoolgewichten: elk vak 3 x uren in ${table.trackCode}`);
+  }
+  const pasted = parseWeightsText([
+    "wiz1ste jaar 1ste graad ASO / g1_j1_Lat / Trimester 1",
+    "DW\tEX\t\tEXPA",
+    "Beeld (1 uur) [BLD] (1 uur)",
+    "1",
+    "Wiskunde (4 uur) [WIS] (4 uur)",
+    "4",
+    "8",
+  ].join("\n"));
+  assertEqual(pasted.trackId, "Latijn", "Schoolgewichten: plaktekst met ruis ervoor");
+  assertEqual(pasted.subjects.find((item) => item.code === "BLD").total, 3, "Schoolgewichten: vak zonder examen = DW x 3");
+  assertEqual(pasted.subjects.find((item) => item.code === "WIS").total, 12, "Schoolgewichten: DW + EX");
+
+  const lat = findSchoolWeights({ year: 1, trackId: "Latijn" });
+  const overall = weightedOverall([{ subject: "Latijn", score: 80 }, { subject: "Beeld", score: 50 }], lat);
+  assertEqual(overall.value, 75, "Schoolgewichten: gewogen totaal (15 x 80 + 3 x 50) / 18");
+
+  const preset = schoolBasketPreset({ classCode: "1STEAM2", subject: "Wiskunde (5 uur)" });
+  assertEqual(preset?.order.join(","), "DW1,EX1,DW2,EX2,DW3,EX3", "Schoolgewichten: mandjes per trimester");
+  assertEqual(preset?.weights.EX2, 10, "Schoolgewichten: EX-gewicht wiskunde STEaM");
+  const noExam = schoolBasketPreset({ classCode: "1LAT1", subject: "Beeld" });
+  assertEqual(noExam?.order.join(","), "DW1,DW2,DW3", "Schoolgewichten: geen examen = alleen DW");
+
+  const aggregation = {
+    year: 1,
+    students: [{
+      id: "x",
+      periods: [{ periodId: "trimester_1", overallScore: 65, overallSourceMetric: "VAKGEMIDDELDE", subjectScores: { Latijn: { subject: "Latijn", score: 80 }, Beeld: { subject: "Beeld", score: 50 } } }],
+      overallScores: [{ periodId: "trimester_1", value: 65, sourceMetric: "VAKGEMIDDELDE" }],
+      yearScore: null,
+      latestOverallScore: 65,
+    }],
+  };
+  const weighted = applySchoolWeightsToAggregation(aggregation, { year: 1, trackId: "Latijn" });
+  assertEqual(weighted.students[0].latestOverallScore, 75, "Schoolgewichten: rapport zonder totaal krijgt gewogen totaal");
+  logPass("Schoolgewichten: graad 1 ingelezen, gewogen totaal en mandjes.");
+  assertGrade2Weights();
+}
+
+function assertGrade2Weights() {
+  const tables = builtInWeightTables().filter((table) => table.grade === 2);
+  assertEqual(tables.length, 54, "Schoolgewichten graad 2: 18 richtingen x 3 periodes");
+  assert(tables.every((table) => table.trackId), "Schoolgewichten graad 2: elke richting gekend");
+  const factor = { semester_1: [4, 1], semester_2: [6, 1.5], year: [null, 2.5] };
+  const off = [];
+  for (const table of tables) {
+    for (const item of table.subjects) {
+      const expected = item.hasExam ? factor[table.periodKey][0] * item.hours : factor[table.periodKey][1] * item.hours;
+      if (Math.abs(item.total - expected) > 0.05) off.push(`${table.trackCode} ${table.period} ${item.code}`);
+    }
+  }
+  // 3GLST SE²AL was a slip in Skore and is stored corrected, so no exceptions remain.
+  assertEqual(off.join(","), "", "Schoolgewichten graad 2: uren-regel (S1 4x, S2 6x, zonder examen 1x/1.5x/2.5x)");
+
+  const nw = findSchoolWeights({ year: 3, trackId: "NW", periodId: "dw_2" });
+  const frans = nw.subjects.find((item) => item.subject === "Frans");
+  assertEqual(`${frans.dw}/${frans.ex}`, "9.6/6.4", "Schoolgewichten graad 2: Frans deelvakken = DW, Frans zelf = EX");
+  assertEqual(nw.period, "Semester 1", "Schoolgewichten graad 2: DW-rapport gebruikt semester 1");
+  assertEqual(findSchoolWeights({ year: 3, trackId: "NW", periodId: "dw_5" }).period, "Semester 2", "Schoolgewichten graad 2: DW5 gebruikt semester 2");
+  const dwOnly = weightedOverall([{ subject: "Wiskunde", score: 80 }, { subject: "Godsdienst", score: 50 }], nw, "dw");
+  assertEqual(dwOnly.value, 71.4, "Schoolgewichten graad 2: DW-basis (5 x 80 + 2 x 50) / 7");
+
+  const iw = schoolBasketPreset({ classCode: "3NW4", subject: "Informaticawetenschappen (1 uur )" });
+  assertEqual(iw?.order.join(","), "DW1,EX1,DW2,EX2", "Schoolgewichten graad 2: mandjes IW 3NW");
+  assertEqual(`${iw.weights.DW1}/${iw.weights.EX1}/${iw.weights.DW2}/${iw.weights.EX2}`, "1/3/1.5/4.5", "Schoolgewichten graad 2: gewichten IW 3NW");
+  const wis = schoolBasketPreset({ classCode: "3NW4", subject: "Wiskunde" });
+  assertEqual(wis?.weights.EXPAR, 11.2, "Schoolgewichten graad 2: EXPA wiskunde = EXPAR-mandje");
+  logPass("Schoolgewichten graad 2: 54 tabellen, deelvakken, DW-basis en mandjes.");
+  assertGrade3Weights();
+}
+
+function assertGrade3Weights() {
+  const tables = builtInWeightTables().filter((table) => table.grade === 3 && table.year === 5);
+  assertEqual(tables.length, 42, "Schoolgewichten graad 3: 14 richtingen 5de jaar x 3 periodes");
+  assert(tables.every((table) => table.trackId && table.year === 5), "Schoolgewichten graad 3: richting en leerjaar 5 gekend");
+  const factor = { semester_1: [4, 1], semester_2: [6, 1.5], year: [null, 2.5] };
+  const off = [];
+  for (const table of tables) {
+    for (const item of table.subjects) {
+      const expected = item.hasExam ? factor[table.periodKey][0] * item.hours : factor[table.periodKey][1] * item.hours;
+      if (Math.abs(item.total - expected) > 0.05) off.push(`${table.trackCode} ${table.period} ${item.code}`);
+    }
+  }
+  // Kept as pasted (confirmed 2026-11-15): 5HW SOC (17 / 23 instead of 16 / 24) and PRO in S2 (1 instead of 1.5).
+  assertEqual(off.join(","), "g3_j1_HW Semester 1 SOC,g3_j1_HW Semester 2 PRO,g3_j1_HW Semester 2 SOC", "Schoolgewichten graad 3: uren-regel");
+  assertEqual(findSchoolWeights({ year: 5, trackId: "Wetenschappen_Wiskunde", classCode: "5WWI8" })?.trackCode, "g3_j1_WWI8", "Schoolgewichten graad 3: variant 8 uur uit klascode");
+  assertEqual(findSchoolWeights({ year: 5, trackId: "Wetenschappen_Wiskunde", classCode: "5WWI1" })?.trackCode, "g3_j1_WWI6", "Schoolgewichten graad 3: zonder variant 6 uur");
+  const mt = schoolBasketPreset({ classCode: "5MT1", subject: "Frans" });
+  assertEqual(`${mt?.weights.DW1}/${mt?.weights.EX1}/${mt?.weights.DW2}/${mt?.weights.EX2}`, "12/8/18/12", "Schoolgewichten graad 3: Frans 5MT (deelvakken = DW)");
+  logPass("Schoolgewichten graad 3: 42 tabellen 5de jaar, varianten 6/8 uur.");
+  assertYear6Weights();
+}
+
+function assertYear6Weights() {
+  const tables = builtInWeightTables().filter((table) => table.year === 6);
+  assertEqual(tables.length, 45, "Schoolgewichten 6de jaar: 15 richtingen x 3 periodes");
+  assert(tables.every((table) => table.trackId), "Schoolgewichten 6de jaar: elke richting gekend");
+  const factor = { semester_1: [4, 1], semester_2: [6, 1.5], year: [null, 2.5] };
+  const off = [];
+  for (const table of tables) {
+    for (const item of table.subjects) {
+      const expected = item.hasExam ? factor[table.periodKey][0] * item.hours : factor[table.periodKey][1] * item.hours;
+      if (Math.abs(item.total - expected) > 0.05) off.push(`${table.trackCode} ${table.period} ${item.code}`);
+    }
+  }
+  // Kept as pasted, same pattern as 5HW: SOC 17 / 23 instead of 16 / 24.
+  assertEqual(off.join(","), "g3_j2_HW Semester 1 SOC,g3_j2_HW Semester 2 SOC", "Schoolgewichten 6de jaar: uren-regel");
+  assertEqual(findSchoolWeights({ year: 6, trackId: "Grieks_Latijn", classCode: "6GL4" })?.trackCode, "g3_j2_GL4", "Schoolgewichten 6de jaar: GL4 uit klascode");
+  assertEqual(findSchoolWeights({ year: 6, trackId: "Grieks_Latijn", classCode: "6GL1" })?.trackCode, "g3_j2_GL3", "Schoolgewichten 6de jaar: GL zonder variant = GL3");
+  assertEqual(findSchoolWeights({ year: 5, trackId: "Grieks_Latijn", classCode: "5GL1" })?.trackCode, "g3_j1_GL", "Schoolgewichten 6de jaar: 5GL blijft g3_j1_GL");
+  assert(tables.filter((table) => table.periodKey === "year").every((table) => table.subjects.find((item) => item.subject === "Godsdienst")?.total === 5), "Schoolgewichten 6de jaar: Godsdienst Jaar = 5 (correctie)");
+  logPass("Schoolgewichten 6de jaar: 45 tabellen, varianten GL3/GL4.");
 }
 
 function assertSubjectFeedbackHandover() {

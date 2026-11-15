@@ -277,6 +277,10 @@ export default function App() {
       }
       splash.update({ stage: "analysing" });
       await nextFrame();
+      // Files without pupil scores (e.g. "Overzicht gewichten", which is only a class list) are skipped.
+      const skippedFiles = reports.filter((report) => !report.students?.length).map((report) => report.fileName);
+      reports.splice(0, reports.length, ...reports.filter((report) => report.students?.length));
+      if (!reports.length) throw new Error(c("classTeacherSkippedFiles", { files: skippedFiles.join(", ") }));
       const analyses = calculateClassTeacherAnalysesFromReports(reports);
       const summary = buildClassTeacherUploadSummary(files, analyses);
 
@@ -291,7 +295,10 @@ export default function App() {
       setUploadSummary(summary);
       setStatus({
         kind: summary.classes > 1 ? "warning" : "success",
-        text: summary.classes > 1 ? c("classTeacherMultiClassWarning") : c("classTeacherParsed"),
+        text: [
+          summary.classes > 1 ? c("classTeacherMultiClassWarning") : c("classTeacherParsed"),
+          skippedFiles.length ? c("classTeacherSkippedFiles", { files: skippedFiles.join(", ") }) : "",
+        ].filter(Boolean).join(" "),
       });
       await splash.finish();
       if (summary.classes === 1) setWorkflowStep("classTeacherReview");
@@ -516,7 +523,7 @@ export default function App() {
   }
 
   function applyBasketPreset(presetName) {
-    const preset = BASKET_PRESETS[presetName];
+    const preset = presetName === "school" ? config?.schoolPreset : BASKET_PRESETS[presetName];
     if (!preset) {
       setConfig((current) => ({ ...current, basketPreset: "custom" }));
       return;

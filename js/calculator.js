@@ -2,8 +2,11 @@ import { DEFAULT_THRESHOLD, thresholdBand } from "./config.js";
 import { t } from "./i18n.js";
 
 const ADVICE_RULES = {
+  // School advice bands: 65+ positive advice, below 65 negative advice, below 55 strongly negative.
   weakYearTotal: 65,
-  veryWeakYearTotal: 50,
+  veryWeakYearTotal: 55,
+  // Tasks worth 1 point or less can only be 0% or 100%: they say little about how results swing.
+  minimumPointsForVolatility: 1,
   strongDwExamGap: 18,
   lowDecisionEvidence: 0.5,
   lowEvidenceMissingShare: 0.5,
@@ -344,7 +347,7 @@ function calculateTrend(student, assignments) {
     return {
       direction: "insufficient",
       delta: null,
-      volatility: points.length ? round(stddev(points.map((point) => point.value))) : null,
+      volatility: volatilityOf(points),
       periodScores: points,
     };
   }
@@ -360,9 +363,17 @@ function calculateTrend(student, assignments) {
   return {
     direction,
     delta: round(delta),
-    volatility: round(stddev(points.map((point) => point.value))),
+    volatility: volatilityOf(points),
     periodScores: points.map((point) => ({ ...point, value: round(point.value), earned: round(point.earned, 2), maxPoints: round(point.maxPoints, 2) })),
   };
+}
+
+/** Spread of results, leaving out tasks of 1 point or less (they can only be 0% or 100%). */
+function volatilityOf(points) {
+  const values = points
+    .filter((point) => Number(point.maxPoints) > ADVICE_RULES.minimumPointsForVolatility)
+    .map((point) => point.value);
+  return values.length >= 2 ? round(stddev(values)) : null;
 }
 
 function periodLabel(assignment, index) {

@@ -38,6 +38,7 @@ import { periodSchemaForYear, trackById, trackOptionsForYear } from "../../js/cl
 import { calculateAnalysis, summariseStudents } from "../../js/calculator.js";
 import { THRESHOLD_BANDS, thresholdBand } from "../../js/config.js";
 import { getLanguage, setLanguage, t, translateTrend } from "../../js/i18n.js";
+import { applySchoolWeightsToAggregation } from "../../js/school-weights.js";
 import { buildProjectPayload, exportJsonPayload, exportProjectJson } from "../../js/exporter.js";
 import { hydrateProjectPayload } from "../../js/project-importer.js";
 import {
@@ -82,7 +83,7 @@ export function buildClassTeacherUploadSummary(files, analyses) {
     subjects,
     periodCount,
     expectedPeriodCount,
-    periods: expectedPeriodCount ? `${periodCount}/${expectedPeriodCount}` : String(periodCount),
+    periods: analyses.map((analysis) => formatPeriodCount(analysis.totals)).join(", "),
     year: years.join(", ") || t("option.notAvailable"),
     track: tracks.join(", ") || t("option.notAvailable"),
     keySubjects,
@@ -113,7 +114,10 @@ export function calculateClassTeacherAnalysesFromReports(reports = [], trackOver
   ));
   return aggregateClassTeacherReportGroups(mappedReports).map((aggregation) => {
     const selectedTrack = trackById(trackOverrides[aggregation.classCode]) || aggregation.track;
-    return withAnonymousNumbers(calculateClassTeacherAnalysis(applyClassTeacherTrackToAggregation(aggregation, selectedTrack)));
+    const withTrack = applyClassTeacherTrackToAggregation(aggregation, selectedTrack);
+    // Reports without an algemeen totaal: use the school weights for this year and track when known.
+    const weighted = applySchoolWeightsToAggregation(withTrack, { year: withTrack.year, trackId: withTrack.track?.id });
+    return withAnonymousNumbers(calculateClassTeacherAnalysis(weighted));
   });
 }
 
@@ -179,6 +183,31 @@ export function applyClassTeacherTrackToAggregation(aggregation, track) {
   };
 }
 
+/** Compact period name for table headers and chart axes: "Dagelijks werk 2" → "DW2", "Klassenraad 1" → "KR1". */
+export function periodShortLabel(period) {
+  return String(period?.label || "")
+    .replace(/^dagelijks\s*werk\s*/i, "DW")
+    .replace(/^klassenraad\s*/i, "KR")
+    .replace(/^semester\s*2 voorlopig resultaat$/i, "Sem 2 (voorl.)")
+    .replace(/^semester\s*/i, "Sem ");
+}
+
+/** Only the reports that were actually uploaded (future periods would be empty columns). */
+export function loadedPeriods(analysis) {
+  const periods = analysis?.periods || [];
+  const loaded = periods.filter((period) => !period.missing);
+  return loaded.length ? loaded : periods;
+}
+
+/** "2/4" for semester/year reports; interim reports (Dagelijks werk) are counted separately. */
+export function formatPeriodCount(totals = {}) {
+  const interim = totals.interimPeriodCount || 0;
+  const required = totals.requiredPeriodCount ?? totals.periodCount ?? 0;
+  const expected = totals.expectedPeriodCount || 0;
+  const main = expected ? `${required}/${expected}` : String(required);
+  return interim ? `${main} + ${interim} tussentijds` : main;
+}
+
 export function classTeacherBlockingIssues(analyses = []) {
   const issues = [];
   if (!analyses.length) issues.push("Geen klasrapporten gevonden.");
@@ -204,17 +233,27 @@ export function classTeacherPolishNotices(analysis, c) {
     });
   }
   const expected = analysis.totals?.expectedPeriodCount || 0;
-  const available = analysis.totals?.periodCount || 0;
-  if (expected && available < expected) {
+  const required = analysis.totals?.requiredPeriodCount ?? analysis.totals?.periodCount ?? 0;
+  const loaded = (analysis.periods || []).filter((period) => !period.missing).map((period) => period.label);
+  if (expected && required < expected) {
     notices.push({
       id: "missing-period",
       title: c("classTeacherMissingPeriodTitle"),
-      body: c("classTeacherMissingPeriodBody", {
-        missing: expected - available,
-        available,
-        expected,
-      }),
+      body: c("classTeacherInterimBody", { count: loaded.length, labels: loaded.join(", ") }),
     });
+  }
+  if ((analysis.sourceReports || []).some((report) => report.overallEstimated)) {
+    notices.push(analysis.schoolWeights
+      ? {
+          id: "weighted-overall",
+          title: c("classTeacherWeightedOverallTitle"),
+          body: c(analysis.schoolWeightsBasis === "dw" ? "classTeacherWeightedOverallDwBody" : "classTeacherWeightedOverallBody", { track: analysis.schoolWeights.trackCode, period: analysis.schoolWeights.period }),
+        }
+      : {
+          id: "estimated-overall",
+          title: c("classTeacherEstimatedOverallTitle"),
+          body: c("classTeacherEstimatedOverallBody"),
+        });
   }
   return notices;
 }

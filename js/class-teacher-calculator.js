@@ -2,20 +2,24 @@ import { thresholdBand } from "./config.js";
 import { t } from "./i18n.js";
 
 const CLASS_TEACHER_RULES = {
+  // School advice bands: 65+ positive, below 65 negative advice, below 55 strongly negative.
   weakYearTotal: 65,
   veryWeakYearTotal: 50,
+  strongNegativeYearTotal: 55,
   weakKeySubject: 60,
   criticalKeySubject: 50,
   positiveYearTotal: 75,
   positiveMinimumKeySubject: 65,
   stableSubjectStddev: 8,
   sharpSubjectDrop: 12,
+  sharpSubjectDropBeyondClass: 8,
   provisionalDifference: 8,
 };
 
 export function calculateClassTeacherAnalysis(aggregation, options = {}) {
   const threshold = options.threshold ?? CLASS_TEACHER_RULES.veryWeakYearTotal;
-  const students = (aggregation.students || []).map((student) => calculateClassTeacherStudent(student, aggregation, threshold));
+  const classDeltas = classMedianSubjectDeltas(aggregation.students || []);
+  const students = (aggregation.students || []).map((student) => calculateClassTeacherStudent(student, aggregation, threshold, classDeltas));
   applyClassTeacherPercentiles(students);
 
   return {
@@ -51,7 +55,7 @@ export function summariseClassTeacherStudents(students = [], threshold = CLASS_T
   };
 }
 
-function calculateClassTeacherStudent(student, aggregation, threshold) {
+function calculateClassTeacherStudent(student, aggregation, threshold, classDeltas = new Map()) {
   const keySubjectLines = (student.subjectLines || []).filter((line) => line.isKeySubject);
   const allSubjectLatestScores = (student.subjectLines || [])
     .map((line) => scoreForLine(line))
@@ -65,7 +69,7 @@ function calculateClassTeacherStudent(student, aggregation, threshold) {
   const keySubjectAverage = round(mean(keySubjectScores.map((entry) => entry.score)));
   const subjectStddev = round(stddev(allSubjectLatestScores));
   const overallTrend = calculateOverallTrend(student.overallScores || []);
-  const strongestSubjectDrop = strongestDrop(keySubjectLines.length ? keySubjectLines : (student.subjectLines || []));
+  const strongestSubjectDrop = strongestDrop(keySubjectLines.length ? keySubjectLines : (student.subjectLines || []), classDeltas);
   const provisionalDifference = provisionalDifferenceSignal(student, aggregation);
   const finalWeighted = numberOrNull(student.yearScore) ?? numberOrNull(student.latestOverallScore);
 
@@ -113,7 +117,7 @@ function calculateClassTeacherFlags(input) {
     flags.push(flag("unknown_track_key_subjects", t("classTeacher.flagDetail.unknown_track_key_subjects"), "info"));
   }
 
-  if (Number.isFinite(input.finalWeighted) && input.finalWeighted < CLASS_TEACHER_RULES.veryWeakYearTotal) {
+  if (Number.isFinite(input.finalWeighted) && input.finalWeighted < CLASS_TEACHER_RULES.strongNegativeYearTotal) {
     flags.push(flag("overall_low_year", t("classTeacher.flagDetail.overall_low_year", {
       score: formatScore(input.finalWeighted),
     }), "critical"));
@@ -149,10 +153,11 @@ function calculateClassTeacherFlags(input) {
     }), "critical"));
   }
 
-  if (input.strongestSubjectDrop && input.strongestSubjectDrop.drop <= -CLASS_TEACHER_RULES.sharpSubjectDrop) {
+  if (input.strongestSubjectDrop) {
     flags.push(flag("sharp_subject_drop", t("classTeacher.flagDetail.sharp_subject_drop", {
       subject: input.strongestSubjectDrop.subject,
-      points: formatScore(Math.abs(input.strongestSubjectDrop.drop)),
+      points: formatScore(Math.abs(input.strongestSubjectDrop.rawDrop ?? input.strongestSubjectDrop.drop)),
+      relative: formatScore(Math.abs(input.strongestSubjectDrop.drop)),
       from: input.strongestSubjectDrop.fromLabel,
       to: input.strongestSubjectDrop.toLabel,
     }), "caution"));
@@ -202,18 +207,53 @@ function calculateOverallTrend(scores = []) {
   };
 }
 
-function strongestDrop(subjectLines = []) {
+/** Median change per subject between two consecutive reports, across the whole class. */
+function classMedianSubjectDeltas(students = []) {
+  const deltas = new Map();
+  for (const student of students) {
+    for (const line of student.subjectLines || []) {
+      const points = (line.points || []).filter((point) => Number.isFinite(point.value));
+      for (let index = 1; index < points.length; index += 1) {
+        const key = `${line.subject}|${points[index - 1].periodId}|${points[index].periodId}`;
+        if (!deltas.has(key)) deltas.set(key, []);
+        deltas.get(key).push(points[index].value - points[index - 1].value);
+      }
+    }
+  }
+  const medians = new Map();
+  for (const [key, values] of deltas) {
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    medians.set(key, sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2);
+  }
+  return medians;
+}
+
+/**
+ * Strongest decline in one subject line, relative to the class: when the whole class drops
+ * after a hard test, that is not a signal about this pupil.
+ */
+function strongestDrop(subjectLines = [], classDeltas = new Map()) {
   let strongest = null;
   for (const line of subjectLines) {
     const points = (line.points || []).filter((point) => Number.isFinite(point.value));
     for (let index = 1; index < points.length; index += 1) {
       const previous = points[index - 1];
       const current = points[index];
-      const drop = round(current.value - previous.value);
+      const classDelta = classDeltas.get(`${line.subject}|${previous.periodId}|${current.periodId}`) ?? 0;
+      // The first interim report (Dagelijks werk 1, Klassenraad 1) often rests on one or two tests,
+      // so it is not a fair baseline for a "sharp drop".
+      if (index === 1 && /^(dw|kr)_/.test(String(previous.periodId || ""))) continue;
+      const rawDrop = round(current.value - previous.value);
+      const drop = round(current.value - previous.value - classDelta);
+      // Only a real decline that is also clearly larger than the class change counts.
+      if (rawDrop > -CLASS_TEACHER_RULES.sharpSubjectDrop || drop > -CLASS_TEACHER_RULES.sharpSubjectDropBeyondClass) continue;
       if (!strongest || drop < strongest.drop) {
         strongest = {
           subject: line.subject,
           drop,
+          rawDrop: round(current.value - previous.value),
+          classDelta: round(classDelta),
           fromPeriodId: previous.periodId,
           fromLabel: previous.periodLabel,
           toPeriodId: current.periodId,

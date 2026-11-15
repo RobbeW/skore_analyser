@@ -62,13 +62,16 @@ export function aggregateClassTeacherReports(reports = [], options = {}) {
       sheetName: report.sheetName,
       periodId: report.periodId,
       periodLabel: report.periodLabel,
+      overallEstimated: Boolean(report.overallEstimated),
       studentCount: report.totals?.studentCount || report.students?.length || 0,
       subjectCount: report.totals?.subjectCount || report.subjects?.length || 0,
     })),
     totals: {
       reportCount: classReports.length,
-      expectedPeriodCount: expectedPeriods.length,
+      expectedPeriodCount: expectedPeriods.filter((period) => !period.optional).length,
       periodCount: periods.filter((period) => !period.missing).length,
+      requiredPeriodCount: periods.filter((period) => !period.missing && !period.optional).length,
+      interimPeriodCount: periods.filter((period) => !period.missing && period.interim).length,
       subjectCount: subjects.length,
       keySubjectCount: subjects.filter((subject) => subject.isKeySubject).length,
       studentCount: students.length,
@@ -130,7 +133,9 @@ function mapReportsByPeriod(reports, warnings) {
 }
 
 function buildPeriodEntries(expectedPeriods, reportsByPeriod, warnings) {
-  const periodEntries = expectedPeriods.map((period, index) => {
+  // Optional interim reports (Dagelijks werk, Klassenraad) only appear when they were uploaded.
+  const shownPeriods = expectedPeriods.filter((period) => !period.optional || reportsByPeriod.has(period.id));
+  const periodEntries = shownPeriods.map((period, index) => {
     const report = reportsByPeriod.get(period.id)?.[0] || null;
     if (!report) {
       warnings.push(warning("missing_period_report", "Een verwacht rapportbestand ontbreekt.", {
@@ -145,6 +150,8 @@ function buildPeriodEntries(expectedPeriods, reportsByPeriod, warnings) {
       fileName: report?.fileName || "",
       sheetName: report?.sheetName || "",
       missing: !report,
+      optional: Boolean(period.optional),
+      interim: Boolean(period.interim),
       optionalOverallScore: Boolean(period.optionalOverallScore),
     };
   });

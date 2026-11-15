@@ -16,6 +16,22 @@ Skore Analyser is a local-first React/Vite tool that turns a Skore Excel export 
 
 Both modes run entirely in the browser. Uploaded workbooks are not sent to a server.
 
+## School weights
+
+`js/school-weights.js` reads the "Overzicht gewichten" as pasted from Skore (subject, hours, DW/EX/EXPA weights, sub-lines such as "Frans: Basiskennis (30%)" or "SE²AL - ICT"). Built-in tables:
+
+- **Grade 1** (`js/school-weights-grade1.js`): 7 tracks; trimesters 1–3 share one table; a subject without an exam gets its DW weight × 3 (every subject = 3 × lesson hours).
+- **Grade 2** (`js/school-weights-grade2.js`): 18 tracks × Semester 1, Semester 2 and Jaar. Exam subjects weigh 4 × hours (S1) and 6 × hours (S2); subjects without an exam 1 ×, 1.5 × and 2.5 × (Jaar). Sub-lines carry the DW weight of the subject above them; that subject's own numbers are then its exam weights (EX, EXPA).
+
+Use:
+
+- **Klastitularis:** when a report has no algemeen totaal, the pupil total is the school-weighted average. Dagelijks werk / Klassenraad reports use only the DW weights of their semester (no exams yet); semester reports use that semester's totals; the year report uses S1 + S2 + Jaar. The check screen shows the table in use.
+- **Vakleerkracht:** baskets are prefilled from the subject's weights (grade 1: DW/EX per trimester; grade 2: DW1/EX1 from S1, DW2/EXPAR/EX2 from S2).
+
+- **Grade 3** (`js/school-weights-grade3.js`): the 5th year, 14 tracks × Semester 1, Semester 2 and Jaar, same rules as grade 2. GWI, LWI and WWI have a 6- and an 8-hour Wiskunde variant; the class code decides (`5WWI8` → 8), otherwise the 6-hour variant is used. The 6th year (`js/school-weights-grade3-y6.js`, 15 tracks) adds GL3/GL4 (3 or 4 hours Wiskunde; `6GL4` → 4, otherwise GL3).
+
+The regression script checks every table against these hours rules. 3GLST SE²AL is stored corrected (it was a slip in Skore).
+
 ## Design and motion
 
 The UI shares its design system with Planner-analyse: Sint-Lievenscollege colours (navy for interaction, school red only as a decorative accent), Fira Sans with system fallbacks, and the motion tokens from `brand_motion.md` (150/260/520 ms). Tokens live at the top of `src/styles/globals.css`; `src/styles/school.css` and `src/styles/tools.css` style the components.

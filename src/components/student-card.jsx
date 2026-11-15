@@ -66,6 +66,8 @@ import { FlagWithHandling } from "./class-council.jsx";
 /** One row of class tiles (replaces separate tabs + overview cards): count, average, below cut-off, little evidence. */
 export function ClassTiles({ classes, students, selectedClass, threshold, onSelect }) {
   const ref = useRef(null);
+  // One class: the "all classes" tile would only repeat the KPI row.
+  if (classes.length < 2) return null;
   const tiles = ["all", ...classes];
   return (
     <div className="class-tiles" ref={ref} role="group" aria-label={t("dashboard.classTabs")}>

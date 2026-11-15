@@ -100,7 +100,83 @@ export const CLASS_TEACHER_PERIOD_SCHEMAS = {
   },
 };
 
+/**
+ * Interim reports (Dagelijks werk N, Klassenraad N). They are optional: a missing one is
+ * never reported as "missing", and they do not count towards the expected report count.
+ * Each one is a snapshot of the semester-to-date total (TOT), so that is the score used.
+ */
+function interimPeriod(kind, number) {
+  const isDw = kind === "dw";
+  return {
+    id: `${kind}_${number}`,
+    label: isDw ? `Dagelijks werk ${number}` : `Klassenraad ${number}`,
+    patterns: isDw
+      ? [new RegExp(`dagelijks\\s*werk\\s*${number}(?!\\d)`, "i"), new RegExp(`\\bdw\\s*${number}\\b(?!\\s*-)`, "i")]
+      : [new RegExp(`klassenraad\\s*${number}(?!\\d)`, "i"), new RegExp(`\\bkr\\s*${number}\\b`, "i")],
+    subjectScorePriority: ["TOT", "PCT", "DW1", "DW2", "DW3", "TOT1", "TOT2"],
+    overallScorePriority: ["PCT", "TOT"],
+    optionalOverallScore: true,
+    optional: true,
+    interim: true,
+  };
+}
+
+function withInterimPeriods(schema, layout) {
+  const byId = new Map(schema.periods.map((period) => [period.id, period]));
+  schema.periods = layout.map((id) => {
+    if (byId.has(id)) return byId.get(id);
+    const [kind, number] = id.split("_");
+    return interimPeriod(kind, Number(number));
+  });
+}
+
+// Order as used by the school's Skore reports (seen in a 3rd-year export, 2026-11):
+// DW1, Klassenraad 1, DW2, DW3, Semester 1, DW4, DW5, Semester 2 voorlopig, DW6, DW7, Semester 2, Jaar.
+withInterimPeriods(CLASS_TEACHER_PERIOD_SCHEMAS.year_3_4, [
+  "dw_1", "kr_1", "dw_2", "dw_3", "semester_1", "dw_4", "dw_5", "semester_2_prelim", "dw_6", "dw_7", "semester_2", "year",
+]);
+// Assumed to follow the same rhythm without the provisional semester-2 report.
+withInterimPeriods(CLASS_TEACHER_PERIOD_SCHEMAS.year_5_6, [
+  "dw_1", "kr_1", "dw_2", "dw_3", "semester_1", "dw_4", "dw_5", "dw_6", "dw_7", "semester_2", "year",
+]);
+
+/** Subjects that are parts of another subject (e.g. Frans kennis + Frans vaardigheden = Frans). */
+export const SUBJECT_COMPONENTS = new Map([
+  ["Frans kennis", "Frans"],
+  ["Frans vaardigheden", "Frans"],
+]);
+
+export function isSubjectComponent(subject) {
+  return SUBJECT_COMPONENTS.has(subject);
+}
+
 export const SUBJECT_ALIASES = new Map([
+  ["FRKEN", "Frans kennis"],
+  ["FRANS KENNIS", "Frans kennis"],
+  ["FRVAA", "Frans vaardigheden"],
+  ["FRANS VAARDIGHEDEN", "Frans vaardigheden"],
+  ["DTAI", "Design Thinking"],
+  ["MOP", "Muziek"],
+  ["EST", "Esthetica"],
+  ["NAT", "Natuurwetenschappen"],
+  ["NATUURWETENSCHAPPEN", "Natuurwetenschappen"],
+  ["TAAL", "Taalredactie en technologie"],
+  ["TAALREDACTIE EN TECHNOLOGIE", "Taalredactie en technologie"],
+  ["PRO", "Project Humane Wetenschappen"],
+  ["PROJECT HUMANE WETENSCHAPPEN", "Project Humane Wetenschappen"],
+  ["FIL", "Filosofie"],
+  ["FILOSOFIE", "Filosofie"],
+  ["KUN", "Kunstbeschouwing"],
+  ["KUNSTBESCHOUWING", "Kunstbeschouwing"],
+  ["SOC", "Sociologie en Psychologie"],
+  ["SOCIOLOGIE EN PSYCHOLOGIE", "Sociologie en Psychologie"],
+  ["COM", "Communicatiewetenschappen en Taaltechnologie"],
+  ["COMMUNICATIE WETENSCHAPPEN EN TAALTECHNOLOGIE", "Communicatiewetenschappen en Taaltechnologie"],
+  ["SFG", "SE²AL"],
+  ["MUZIEK", "Muziek"],
+  ["LOP", "Lichamelijke opvoeding"],
+  ["PROJECT MT", "Moderne talen"],
+  ["MODERNE TALEN", "Moderne talen"],
   ["ALGTO", "Algemeen totaal"],
   ["ALGEMEEN TOTAAL", "Algemeen totaal"],
   ["TOTAAL", "Algemeen totaal"],
@@ -208,7 +284,7 @@ export const TRACK_KEY_SUBJECTS = {
   Grieks_Latijn_STEaM: {
     years: [3, 4],
     label: "Grieks-Latijn STEaM",
-    aliases: ["GLS", "GL STEAM", "GRIEKS LATIJN STEAM", "GRIEKS-LATIJN STEAM"],
+    aliases: ["GLST", "GLS", "GL STEAM", "GRIEKS LATIJN STEAM", "GRIEKS-LATIJN STEAM"],
     keySubjects: ["Wiskunde", "Frans", "Nederlands", "Latijn", "Grieks", "Informaticawetenschappen"],
   },
   Grieks_Latijn_TC: {
@@ -226,19 +302,27 @@ export const TRACK_KEY_SUBJECTS = {
   Latijn_TC: {
     years: [3, 4],
     label: "Latijn Taal & Cultuur",
-    aliases: ["LAT TC", "LATIJN TC", "LATIJN TAAL EN CULTUUR"],
+    aliases: ["LTC", "LAT TC", "LATIJN TC", "LATIJN TAAL EN CULTUUR"],
     keySubjects: ["Wiskunde", "Frans", "Nederlands", "Engels", "Geschiedenis", "Latijn"],
   },
   Latijn_STEaM: {
     years: [3, 4],
     label: "Latijn STEaM",
-    aliases: ["LAT STEAM", "LATIJN STEAM"],
+    aliases: ["LST", "LAT STEAM", "LATIJN STEAM"],
     keySubjects: ["Wiskunde", "Frans", "Nederlands", "Informaticawetenschappen", "Latijn"],
   },
   Economische_Wetenschappen: {
     years: [3, 4],
     label: "Economische Wetenschappen",
-    aliases: ["EW", "ECW", "ECONOMISCHE WETENSCHAPPEN"],
+    aliases: ["EWS", "EW", "ECW", "ECONOMISCHE WETENSCHAPPEN"],
+    keySubjects: ["Wiskunde", "Frans", "Nederlands", "Economie", "Engels"],
+  },
+  // Added 2026-11-15 from the Skore weights (g2_j1_EWTC / g2_j2_EWTC). Key subjects copied from
+  // Economische Wetenschappen until the school confirms them.
+  Economische_Wetenschappen_TC: {
+    years: [3, 4],
+    label: "Economische Wetenschappen Taal & Cultuur",
+    aliases: ["EWTC", "EW TC", "ECONOMISCHE WETENSCHAPPEN TC"],
     keySubjects: ["Wiskunde", "Frans", "Nederlands", "Economie", "Engels"],
   },
   Humane_Wetenschappen: {

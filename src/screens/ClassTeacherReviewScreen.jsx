@@ -38,6 +38,7 @@ import { periodSchemaForYear, trackById, trackOptionsForYear } from "../../js/cl
 import { calculateAnalysis, summariseStudents } from "../../js/calculator.js";
 import { THRESHOLD_BANDS, thresholdBand } from "../../js/config.js";
 import { getLanguage, setLanguage, t, translateTrend } from "../../js/i18n.js";
+import { findSchoolWeights } from "../../js/school-weights.js";
 import { buildProjectPayload, exportJsonPayload, exportProjectJson } from "../../js/exporter.js";
 import { hydrateProjectPayload } from "../../js/project-importer.js";
 import {
@@ -60,7 +61,7 @@ import {
 import { FlowIndicator } from "../components/setup-parts.jsx";
 import { StatCard } from "../components/student-card.jsx";
 import { formatNumber } from "../lib/app-helpers.jsx";
-import { classTeacherBlockingIssues, classTeacherPolishNotices, classTeacherSubjectOptions } from "../lib/class-teacher-helpers.jsx";
+import { formatPeriodCount, classTeacherBlockingIssues, classTeacherPolishNotices, classTeacherSubjectOptions } from "../lib/class-teacher-helpers.jsx";
 
 export function ClassTeacherReviewScreen({
   c,
@@ -77,7 +78,7 @@ export function ClassTeacherReviewScreen({
   const blockingIssues = classTeacherBlockingIssues(analyses);
   const primaryAnalysis = analyses[0];
   const classesLabel = analyses.map((analysis) => analysis.classCode).join(", ");
-  const periodLabel = analyses.map((analysis) => `${analysis.totals.periodCount}/${analysis.totals.expectedPeriodCount}`).join(", ");
+  const periodLabel = analyses.map((analysis) => formatPeriodCount(analysis.totals)).join(", ");
   const studentCount = analyses.reduce((sum, analysis) => sum + analysis.totals.studentCount, 0);
   const polishNotices = analyses.flatMap((analysis) => classTeacherPolishNotices(analysis, c));
 
@@ -155,6 +156,8 @@ export function ClassTeacherReviewScreen({
             })}
           </CardContent>
         </Card>
+
+        <SchoolWeightsCard c={c} table={analyses[0]?.schoolWeights || findSchoolWeights({ year: analyses[0]?.year, trackId: analyses[0]?.track?.id, classCode: analyses[0]?.classCode })} />
 
         <Card className="class-teacher-wide-card">
           <CardHeader>
@@ -273,5 +276,51 @@ export function ClassTeacherNoticeList({ notices }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/** The school weights used for this class (grade 1 for now), so the klastitularis can check them. */
+export function SchoolWeightsCard({ c, table }) {
+  const hasExpa = Boolean(table?.subjects.some((item) => Number.isFinite(item.expa)));
+  return (
+    <Card className="class-teacher-wide-card weights-card">
+      <CardHeader>
+        <CardTitle>{c("weightsTitle")}</CardTitle>
+        <CardDescription>{table ? c("weightsDescription", { track: table.trackCode, period: table.period }) : c("weightsNone")}</CardDescription>
+      </CardHeader>
+      {table ? (
+        <CardContent className="table-scroll">
+          <Table className="weights-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead>{c("weightsSubject")}</TableHead>
+                <TableHead className="table-cell-numeric">{c("weightsHours")}</TableHead>
+                <TableHead className="table-cell-numeric">DW</TableHead>
+                <TableHead className="table-cell-numeric">EX</TableHead>
+                {hasExpa ? <TableHead className="table-cell-numeric">EXPA</TableHead> : null}
+                <TableHead className="table-cell-numeric">{t("student.total")}</TableHead>
+                <TableHead className="table-cell-numeric">{c("weightsShare")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...table.subjects].sort((a, b) => b.total - a.total || a.subject.localeCompare(b.subject)).map((item) => (
+                <TableRow key={item.code}>
+                  <TableCell>
+                    <strong>{item.subject}</strong>
+                    {item.isMajor ? <small> · major</small> : item.isMinor ? <small> · minor</small> : null}
+                  </TableCell>
+                  <TableCell className="table-cell-numeric">{item.hours}</TableCell>
+                  <TableCell className="table-cell-numeric">{item.hasExam || table.noExamMultiplier === 1 ? item.dw : `${item.dw} x ${table.noExamMultiplier}`}</TableCell>
+                  <TableCell className="table-cell-numeric">{Number.isFinite(item.ex) ? item.ex : "–"}</TableCell>
+                  {hasExpa ? <TableCell className="table-cell-numeric">{Number.isFinite(item.expa) ? item.expa : "–"}</TableCell> : null}
+                  <TableCell className="table-cell-numeric"><strong>{item.total}</strong></TableCell>
+                  <TableCell className="table-cell-numeric">{Math.round(item.share * 1000) / 10}%</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      ) : null}
+    </Card>
   );
 }

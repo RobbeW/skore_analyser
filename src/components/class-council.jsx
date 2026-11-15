@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { cn } from "@/lib/utils";
 import { t } from "../../js/i18n.js";
 import { anonymousName, formatGrade, formatNumber, shortLabel } from "../lib/app-helpers.jsx";
-import {
+import { loadedPeriods, periodShortLabel,
   classTeacherDetailFlags,
   classTeacherFlagVariant,
   classTeacherHasMainSubjectDanger,
@@ -149,7 +149,7 @@ function SubjectMiniTable({ student, periods }) {
         <thead>
           <tr>
             <th scope="col">{t("detected.subject")}</th>
-            {periods.map((period) => <th key={period.id} scope="col">{shortLabel(period.label, 12)}</th>)}
+            {periods.map((period) => <th key={period.id} scope="col">{shortLabel(periodShortLabel(period), 12)}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -322,7 +322,7 @@ export function MeetingMode({
 
             <section className="meeting__panel">
               <h3>{c("classTeacherSubjectMatrix")}</h3>
-              <SubjectMiniTable student={student} periods={analysis.periods || []} />
+              <SubjectMiniTable student={student} periods={loadedPeriods(analysis)} />
             </section>
           </div>
 

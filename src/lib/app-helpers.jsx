@@ -58,16 +58,23 @@ import {
   purgeLegacyProjectDrafts,
 } from "../../js/storage.js";
 import { ASSIGNMENT_USAGE_OPTIONS, BASKET_PRESETS, DEFAULT_BASKET_PRESET, LOW_EVIDENCE_CLASS_GAP, LOW_EVIDENCE_POINTS_COVERAGE, SCHOOL_YEAR_DOMAIN_END, defaultFilters } from "./app-constants.jsx";
+import { schoolBasketPreset } from "../../js/school-weights.js";
 
 export function createInitialConfig(model, preferences = {}) {
   const base = buildDefaultConfig(model);
   const subjectKey = preferenceSubjectKey(base.subject || model.subjects?.[0]?.value || "subject");
   const preferredPreset = preferences.lastBasketPresetBySubject?.[subjectKey];
-  const basketPreset = BASKET_PRESETS[preferredPreset] ? preferredPreset : suggestBasketPreset(model);
-  const preset = BASKET_PRESETS[basketPreset] || BASKET_PRESETS[DEFAULT_BASKET_PRESET];
+  // School weights win when they are known for this class and subject (grade 1 for now).
+  const schoolPreset = schoolBasketPreset({
+    classCode: model.classes?.[0]?.value || model.fileName,
+    subject: base.subject || model.subjects?.[0]?.value || "",
+  });
+  const basketPreset = schoolPreset ? "school" : BASKET_PRESETS[preferredPreset] ? preferredPreset : suggestBasketPreset(model);
+  const preset = schoolPreset || BASKET_PRESETS[basketPreset] || BASKET_PRESETS[DEFAULT_BASKET_PRESET];
   return {
     ...base,
     basketPreset,
+    schoolPreset,
     categories: categoriesFromPreset(preset),
     assignments: Object.fromEntries(model.assignments.map((assignment, index) => [
       assignment.id,
@@ -136,6 +143,12 @@ export function reviewSuggestionItems(assignments = []) {
     .slice(0, 6);
 }
 
+/** The active basket preset: the school preset or one of the built-in examples. */
+export function presetForConfig(config = {}, name = config.basketPreset) {
+  if (name === "school" && config.schoolPreset) return config.schoolPreset;
+  return BASKET_PRESETS[name] || BASKET_PRESETS[DEFAULT_BASKET_PRESET];
+}
+
 export function basketCategoriesFromConfig(config) {
   if (config.basketPreset === "custom" && config.categories?.length) {
     return config.categories.map((category) => ({
@@ -143,7 +156,7 @@ export function basketCategoriesFromConfig(config) {
       weight: Number(category.weight) || 0,
     }));
   }
-  const preset = BASKET_PRESETS[config.basketPreset] || BASKET_PRESETS[DEFAULT_BASKET_PRESET];
+  const preset = presetForConfig(config);
   const orderedNames = uniqueKeepOrder([
     ...(preset.order || []),
     ...(config.categories || []).map((category) => category.name),
@@ -203,7 +216,7 @@ export function inferBasketCategory(assignment, index, assignments, basketOrder 
     const upper = name.toUpperCase();
     return upper.startsWith(category) && upper !== "EXPAR";
   });
-  const basketFromText = inferBasketFromText(assignmentText, category, basketOrder, broadText, assignment.date);
+  const basketFromText = inferBasketFromText(assignmentText, category, basketOrder, broadText, assignment.date, assignment.sheetName);
 
   if (basketFromText) return basketFromText;
   if (matchingBaskets.length) {
@@ -217,8 +230,10 @@ export function inferBasketCategory(assignment, index, assignments, basketOrder 
   return category || basketOrder[Math.min(index, basketOrder.length - 1)] || "OTHER";
 }
 
-export function inferBasketFromText(text, category, basketOrder, broadText = text, dateText = "") {
-  const period = detectPeriod(text);
+export function inferBasketFromText(text, category, basketOrder, broadText = text, dateText = "", sheetName = "") {
+  // Skore sheet names ("DW - Sem1.3", "EX - Sem2") are the most reliable period signal,
+  // then explicit words in the title, then the date. "Huistaak 2" is not period 2.
+  const period = detectPeriod(sheetName) || detectPeriod(text) || periodFromDate(dateText, basketOrder, category);
   const hasSpringExamText = /(parex|expar|paas|easter|partial|partieel)/.test(broadText);
 
   if (category === "EX") {
@@ -284,11 +299,27 @@ export function finalExamBasket(basketOrder) {
   return null;
 }
 
+/** Period from explicit words only ("Sem1.3", "semester 2", "trim 3", "DW1"). A bare number is not a period. */
 export function detectPeriod(text) {
-  if (/(trimester|trim|tri|periode|period|sem|semester)\s*1|\b(dw|ex)\s*1\b|\b1\b/.test(text)) return 1;
-  if (/(trimester|trim|tri|periode|period|sem|semester)\s*2|\b(dw|ex)\s*2\b|\b2\b/.test(text)) return 2;
-  if (/(trimester|trim|tri|periode|period|sem|semester)\s*3|\b(dw|ex)\s*3\b|\b3\b/.test(text)) return 3;
+  const value = String(text || "").toLowerCase();
+  for (const period of [1, 2, 3]) {
+    const explicit = new RegExp(`(trimester|trim|semester|sem|periode|period)\\s*${period}(?!\\d)|\\b(dw|ex)\\s*${period}\\b`);
+    if (explicit.test(value)) return period;
+  }
   return null;
+}
+
+/** Daily work without a period label: place it by school-year date (semesters, or trimesters when DW3 exists). */
+export function periodFromDate(dateText, basketOrder = [], category = "") {
+  if (String(category).toUpperCase() !== "DW") return null;
+  const month = parseDateFromText(dateText)?.month;
+  if (!Number.isInteger(month)) return null;
+  if (basketOrder.includes("DW3")) {
+    if (month >= 8) return 1; // September-December
+    if (month <= 2) return 2; // January-March
+    return 3;
+  }
+  return month >= 8 || month === 0 ? 1 : 2; // semester 1: September-January
 }
 
 export function uniqueKeepOrder(values) {

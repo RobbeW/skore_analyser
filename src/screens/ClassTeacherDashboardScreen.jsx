@@ -65,7 +65,7 @@ import { FlowIndicator } from "../components/setup-parts.jsx";
 import { SortHeader, StatCard } from "../components/student-card.jsx";
 import { CLASS_TEACHER_LINE_COLORS } from "../lib/app-constants.jsx";
 import { anonymousName, clamp, classTeacherAxisTicks, classTeacherChartDomain, formatGrade, formatNumber, shortLabel, unique } from "../lib/app-helpers.jsx";
-import { classTeacherDefaultSubjects, classTeacherDetailFlags, classTeacherFlagVariant, classTeacherHasMainSubjectDanger, classTeacherMainSubjectDangerLabel, classTeacherPolishNotices, classTeacherStudentSummary, filterClassTeacherStudents, normaliseSelectedClassTeacherSubjects, sortClassTeacherStudents } from "../lib/class-teacher-helpers.jsx";
+import { loadedPeriods, periodShortLabel, classTeacherDefaultSubjects, classTeacherDetailFlags, classTeacherFlagVariant, classTeacherHasMainSubjectDanger, classTeacherMainSubjectDangerLabel, classTeacherPolishNotices, classTeacherStudentSummary, filterClassTeacherStudents, normaliseSelectedClassTeacherSubjects, sortClassTeacherStudents } from "../lib/class-teacher-helpers.jsx";
 import { SlideIndicator, useChartReveal } from "../lib/use-motion.jsx";
 import { ClassTeacherNoticeList } from "./ClassTeacherReviewScreen.jsx";
 import { ClassCouncilPrint, ClassHeatmap, FlagWithHandling, MeetingMode, SubjectFeedbackList, feedbackForStudent, isDiscussionStudent } from "../components/class-council.jsx";
@@ -477,7 +477,7 @@ export function ClassTeacherStudentCard({
             onNone={showNoSubjects}
           />
           <p className="class-teacher-graph-hint">{c("classTeacherGraphHint")}</p>
-          <ClassTeacherLinesChart c={c} student={student} periods={analysis.periods} selectedSubjects={visibleSubjects} scaleMode={scaleMode} />
+          <ClassTeacherLinesChart c={c} student={student} periods={loadedPeriods(analysis)} selectedSubjects={visibleSubjects} scaleMode={scaleMode} />
         </section>
 
         <section className="card-section card-section--summary" data-tour-part="advice">
@@ -506,7 +506,7 @@ export function ClassTeacherStudentCard({
             <h4>{c("classTeacherSubjectMatrix")}</h4>
             <span>{analysis.track?.label || ""}</span>
           </div>
-          <ClassTeacherSubjectMatrix c={c} student={student} periods={analysis.periods} />
+          <ClassTeacherSubjectMatrix c={c} student={student} periods={loadedPeriods(analysis)} />
         </section>
 
         <section className="card-section notes-section" data-tour-part="notes">
@@ -603,7 +603,7 @@ export function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, 
         {periodList.map((period, index) => (
           <g key={period.id}>
             <line className="class-teacher-period-line" x1={xForIndex(index)} y1={top} x2={xForIndex(index)} y2={bottom} />
-            <text className="axis-label" x={xForIndex(index)} y={bottom + 28} textAnchor="middle">{shortLabel(period.label, 16)}</text>
+            <text className="axis-label" x={xForIndex(index)} y={bottom + 28} textAnchor="middle">{shortLabel(periodShortLabel(period), 16)}</text>
           </g>
         ))}
         {subjectLines.map((line, index) => (
@@ -681,7 +681,7 @@ export function ClassTeacherSubjectMatrix({ c, student, periods }) {
         <TableHeader>
           <TableRow>
             <TableHead>{t("detected.subject")}</TableHead>
-            {periods.map((period) => <TableHead key={period.id}>{shortLabel(period.label, 12)}</TableHead>)}
+            {periods.map((period) => <TableHead key={period.id}>{shortLabel(periodShortLabel(period), 12)}</TableHead>)}
             <TableHead>{t("student.total")}</TableHead>
           </TableRow>
         </TableHeader>
