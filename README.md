@@ -32,6 +32,15 @@ Use:
 
 The regression script checks every table against these hours rules. 3GLST SE²AL is stored corrected (it was a slip in Skore).
 
+## Prior school year
+
+On every pupil card (both modes) **Vorig jaar** reads that pupil's Skore year-report printout (PDF) from last school year, fully in the browser: `js/pdf-text.js` (small offline PDF text reader) and `js/prior-year-report.js` (subjects with DW / EX / TOT, the class distribution per band, group totals, algemeen totaal and the class council decision; report comments are not kept).
+
+- The name in the report is checked against the card; a different name asks before linking.
+- **Klastitularis:** last year as the first point of every subject line (Wetenschappen / Natuurwetenschappen as a faint lead-in for Biologie, Chemie and Fysica), a "Vorig jaar" column, and two signals: *sterke daling t.o.v. vorig jaar* (hoofdvak 15+ points lower) and *vorig jaar ook al zwak* (below 50 then, below 60 now). The class council decision of last year is shown only in klassenraad mode.
+- **Vakleerkracht:** last year's TOT / DW / EX for that subject, the change since, and a dashed reference line in the year chart.
+- Prior-year data stays in the session and is only stored when the teacher saves a project file.
+
 ## Design and motion
 
 The UI shares its design system with Planner-analyse: Sint-Lievenscollege colours (navy for interaction, school red only as a decorative accent), Fira Sans with system fallbacks, and the motion tokens from `brand_motion.md` (150/260/520 ms). Tokens live at the top of `src/styles/globals.css`; `src/styles/school.css` and `src/styles/tools.css` style the components.

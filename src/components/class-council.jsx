@@ -18,6 +18,7 @@ import { loadedPeriods, periodShortLabel,
 } from "../lib/class-teacher-helpers.jsx";
 import { useEnter, useStagger } from "../lib/use-motion.jsx";
 import { DECISION_STATUSES, FLAG_STATES, normaliseName } from "../lib/teacher-decisions.js";
+import { PriorCell, PriorSignalList, PriorYearDecision, priorYearSignals } from "./prior-year.jsx";
 
 export function heatTone(score) {
   if (!Number.isFinite(score)) return "empty";
@@ -142,13 +143,14 @@ export function ClassHeatmap({ c, analysis, students, anonymised, feedback, deci
   );
 }
 
-function SubjectMiniTable({ student, periods }) {
+function SubjectMiniTable({ student, periods, prior = null }) {
   return (
     <div className="table-scroll">
       <table className="meeting-subjects">
         <thead>
           <tr>
             <th scope="col">{t("detected.subject")}</th>
+            {prior ? <th scope="col" className="prior-column">{t("prior.column")}</th> : null}
             {periods.map((period) => <th key={period.id} scope="col">{shortLabel(periodShortLabel(period), 12)}</th>)}
           </tr>
         </thead>
@@ -156,6 +158,7 @@ function SubjectMiniTable({ student, periods }) {
           {(student.subjectLines || []).map((line) => (
             <tr key={line.subject} className={line.isKeySubject ? "is-key" : undefined}>
               <th scope="row">{line.subject}</th>
+              {prior ? <td className="prior-column"><PriorCell prior={prior} subject={line.subject} /></td> : null}
               {periods.map((period) => {
                 const point = (line.points || []).find((item) => item.periodId === period.id);
                 return (
@@ -227,6 +230,7 @@ export function MeetingMode({
   notes,
   decisions,
   feedback,
+  priorYear = {},
   onIndexChange,
   onClose,
   onNoteChange,
@@ -261,6 +265,7 @@ export function MeetingMode({
   const keyFlags = (student.flags || []).filter((flag) => !flags.includes(flag));
   const name = displayName(student, anonymised);
   const feedbackEntries = feedbackForStudent(feedback, student);
+  const prior = priorYear[student.id] || null;
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
@@ -317,12 +322,14 @@ export function MeetingMode({
                   onChange={(value) => onDecisionChange(student.id, { flagStates: { ...(decision.flagStates || {}), [flag.type]: value } })}
                 />
               ))}
+              <PriorSignalList signals={priorYearSignals(student, prior)} />
               <SubjectFeedbackList entries={feedbackEntries} />
+              <PriorYearDecision prior={prior} />
             </section>
 
             <section className="meeting__panel">
               <h3>{c("classTeacherSubjectMatrix")}</h3>
-              <SubjectMiniTable student={student} periods={loadedPeriods(analysis)} />
+              <SubjectMiniTable student={student} periods={loadedPeriods(analysis)} prior={prior} />
             </section>
           </div>
 

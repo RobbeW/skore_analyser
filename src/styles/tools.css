@@ -634,3 +634,172 @@
     min-width: 40mm;
   }
 }
+
+/* ===== Prior school year ===== */
+.prior-year-control {
+  display: inline-flex;
+  align-items: center;
+}
+
+.prior-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 34px;
+  padding: 0.2rem 0.35rem 0.2rem 0.7rem;
+  border: 1px solid var(--brand-accent-soft);
+  border-radius: 999px;
+  background: var(--brand-tint);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.prior-chip__remove {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+
+.prior-chip__remove:hover {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+/* Chart: "Vorig jaar" slot, hollow dots and a dashed link into this year */
+.prior-slot__divider {
+  stroke: var(--chart-axis);
+  stroke-dasharray: 3 4;
+}
+
+.prior-slot__label {
+  font-style: italic;
+}
+
+.prior-point__link {
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+  opacity: 0.7;
+}
+
+.prior-point.is-lead-in {
+  opacity: 0.45;
+}
+
+.prior-point.is-lead-in .prior-point__link {
+  stroke-dasharray: 2 5;
+}
+
+/* Tables */
+.prior-column {
+  border-right: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--brand-tint) 60%, transparent);
+}
+
+.prior-cell.is-lead-in {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.prior-signals {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+/* Klassenraad mode only: last year's decision */
+.prior-decision {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand-accent-soft);
+  border-radius: var(--radius-small);
+  background: var(--card);
+}
+
+.prior-decision h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.prior-decision h4 .muted {
+  font-weight: 500;
+}
+
+.prior-decision dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+
+.prior-decision dt {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.prior-decision dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.prior-decision__wide {
+  grid-column: 1 / -1;
+}
+
+.prior-decision__wide dd {
+  font-weight: 400;
+}
+
+/* Subject teacher: one line above the chart and a reference line in it */
+.prior-subject {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+}
+
+.prior-subject.is-lead-in {
+  color: var(--muted-foreground);
+}
+
+.prior-delta.is-down {
+  color: var(--destructive);
+  font-weight: 600;
+}
+
+.prior-delta.is-up {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.prior-reference line {
+  stroke: var(--brand-primary-hover);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  opacity: 0.8;
+}
+
+.prior-reference text {
+  fill: var(--brand-primary-hover);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media print {
+  .prior-year-control button,
+  .prior-chip__remove {
+    display: none !important;
+  }
+}

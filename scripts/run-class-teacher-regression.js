@@ -13,6 +13,7 @@ import {
 } from "../js/note-guidance.js";
 import { readWorkbook } from "./workbook-reader.js";
 import { buildSubjectFeedbackPayload, normaliseName, parseSubjectFeedback } from "../src/lib/teacher-decisions.js";
+import { parsePriorYearReport, priorClassPosition, priorValueFor } from "../js/prior-year-report.js";
 import { applySchoolWeightsToAggregation, builtInWeightTables, findSchoolWeights, parseWeightsText, schoolBasketPreset, weightedOverall } from "../js/school-weights.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -106,6 +107,7 @@ function main() {
   assertInterimReports();
   assertSchoolWeights();
   assertSubjectFeedbackHandover();
+  assertPriorYearReport();
 
   if (SHOULD_BUILD) {
     runViteBuild();
@@ -322,6 +324,60 @@ function assertYear6Weights() {
   assertEqual(findSchoolWeights({ year: 5, trackId: "Grieks_Latijn", classCode: "5GL1" })?.trackCode, "g3_j1_GL", "Schoolgewichten 6de jaar: 5GL blijft g3_j1_GL");
   assert(tables.filter((table) => table.periodKey === "year").every((table) => table.subjects.find((item) => item.subject === "Godsdienst")?.total === 5), "Schoolgewichten 6de jaar: Godsdienst Jaar = 5 (correctie)");
   logPass("Schoolgewichten 6de jaar: 45 tabellen, varianten GL3/GL4.");
+}
+
+function assertPriorYearReport() {
+  // Made-up runs in the layout of a Skore year-report printout (positions as the PDF reader gives them).
+  const run = (text, cellX, cellY, y = cellY) => ({ text, cellX, cellY, x: cellX, y });
+  const header = [
+    run("Jaar", 255, 788), run("7 Testleerling Voorbeeld", 255, 763), run("2TEST1", 255, 746), run("2025 - 2026", 255, 729),
+    run("Algemene Vakken", 17, 676), run("DW", 147, 676), run("EX", 194, 676), run("TOT", 241, 676),
+    run("90", 325, 676), run("80", 365, 676), run("70", 403, 676), run("60", 440, 676), run("50", 478, 676), run("<50", 515, 676),
+  ];
+  const row = (y, name, dw, ex, tot, bands) => [
+    run(name, 20, y + 6),
+    ...(dw !== null ? [run(dw, 147, y), run("%", 172, y)] : []),
+    ...(ex !== null ? [run(ex, 194, y), run("%", 219, y)] : []),
+    run(tot, 241, y), run("%", 266, y),
+    ...bands.map(([x, count]) => run(String(count), x, y)),
+  ];
+  const page1 = [
+    ...header,
+    ...row(651, "Wiskunde (5 uur) (Leerkracht A)", "87,9", "78,4", "81,6", [[325, 2], [379, 1], [403, 6], [440, 10]]),
+    run("Lichamelijke opvoeding (2", 20, 614), run("uur)", 20, 614, 603), ...row(608, "", "77,2", null, "77,2", [[365, 10], [416, 10]]).slice(1),
+    ...row(560, "Wetenschappen (3 uur)", "78,4", "88,4", "85,1", [[379, 4], [403, 12]]),
+  ];
+  const page2 = [
+    run("Totaal STEaM Vakken :", 17, 700), run("83,5", 147, 700), run("82,2", 194, 700), run("83,2", 241, 700),
+    run("Algemeen Totaal :", 17, 650), run("84,1", 241, 650),
+    run("Rapportcommentaar:", 17, 600), run("Wiskunde (5 uur)", 17, 590), run("Dit commentaar wordt niet bewaard.", 17, 580),
+    run("Conclusie van de delibererende klassenraad:", 17, 300),
+    run("Beslissing: geslaagd", 17, 290), run("Studiebewijs: oriënteringsattest A", 17, 280), run("Advies: geschikt voor alle richtingen.", 17, 270),
+    run("Klastitularis", 17, 250),
+  ];
+  const report = parsePriorYearReport([{ runs: page1 }, { runs: page2 }], { fileName: "test.pdf" });
+  assertEqual(report.schoolYear, "2025 - 2026", "Vorig jaar: schooljaar");
+  assertEqual(report.classCode, "2TEST1", "Vorig jaar: klas");
+  assertEqual(report.pupilName, "Testleerling Voorbeeld", "Vorig jaar: naam zonder klasnummer");
+  assertEqual(report.subjects.map((item) => item.subject).join(","), "Wiskunde,Lichamelijke opvoeding,Wetenschappen", "Vorig jaar: vakken (ook over twee regels)");
+  const wis = report.subjects.find((item) => item.subject === "Wiskunde");
+  assertEqual(`${wis.dw}/${wis.ex}/${wis.tot}`, "87.9/78.4/81.6", "Vorig jaar: DW/EX/TOT");
+  assertEqual(wis.ownBand, "80", "Vorig jaar: eigen band (verschoven label)");
+  assertEqual(priorClassPosition(wis)?.below, 16, "Vorig jaar: klasgenoten in een lagere band");
+  const lo = report.subjects.find((item) => item.subject === "Lichamelijke opvoeding");
+  assertEqual(`${lo.ex}/${lo.tot}`, "null/77.2", "Vorig jaar: vak zonder examen");
+  assertEqual(report.overall?.tot, 84.1, "Vorig jaar: algemeen totaal");
+  assertEqual(report.groupTotals[0]?.tot, 83.2, "Vorig jaar: groepstotaal op pagina 2");
+  assertEqual(report.decision?.beslissing, "geslaagd", "Vorig jaar: beslissing");
+  assertEqual(report.decision?.advies, "geschikt voor alle richtingen.", "Vorig jaar: advies");
+  assert(!JSON.stringify(report).includes("niet bewaard"), "Vorig jaar: rapportcommentaar wordt niet bewaard");
+  assertEqual(priorValueFor(report, "Wiskunde")?.source, "same", "Vorig jaar: zelfde vak");
+  const bio = priorValueFor(report, "Biologie");
+  assertEqual(`${bio?.source}/${bio?.fromSubject}/${bio?.value}`, "leadIn/Wetenschappen/85.1", "Vorig jaar: Wetenschappen als voorloper van Biologie");
+  let rejected = false;
+  try { parsePriorYearReport([{ runs: [run("Iets anders", 10, 10)] }]); } catch { rejected = true; }
+  assert(rejected, "Vorig jaar: ander PDF wordt geweigerd");
+  logPass("Vorig jaar: jaarrapport inlezen, voorlopers en klassenraadbeslissing.");
 }
 
 function assertSubjectFeedbackHandover() {

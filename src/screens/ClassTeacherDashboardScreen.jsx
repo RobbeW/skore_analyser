@@ -68,6 +68,8 @@ import { anonymousName, clamp, classTeacherAxisTicks, classTeacherChartDomain, f
 import { loadedPeriods, periodShortLabel, classTeacherDefaultSubjects, classTeacherDetailFlags, classTeacherFlagVariant, classTeacherHasMainSubjectDanger, classTeacherMainSubjectDangerLabel, classTeacherPolishNotices, classTeacherStudentSummary, filterClassTeacherStudents, normaliseSelectedClassTeacherSubjects, sortClassTeacherStudents } from "../lib/class-teacher-helpers.jsx";
 import { SlideIndicator, useChartReveal } from "../lib/use-motion.jsx";
 import { ClassTeacherNoticeList } from "./ClassTeacherReviewScreen.jsx";
+import { PriorCell, PriorSignalList, PriorYearButton, priorYearSignals } from "../components/prior-year.jsx";
+import { priorValueFor } from "../../js/prior-year-report.js";
 import { ClassCouncilPrint, ClassHeatmap, FlagWithHandling, MeetingMode, SubjectFeedbackList, feedbackForStudent, isDiscussionStudent } from "../components/class-council.jsx";
 
 export function ClassTeacherDashboardScreen({
@@ -89,6 +91,9 @@ export function ClassTeacherDashboardScreen({
   subjectFeedback = {},
   onImportFeedback,
   onPrintOverview,
+  priorYear = {},
+  onUploadPriorYear,
+  onRemovePriorYear,
 }) {
   const students = useMemo(
     () => [...analysis.students].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
@@ -264,6 +269,9 @@ export function ClassTeacherDashboardScreen({
             onDecisionChange={onDecisionChange}
             feedbackEntries={feedbackForStudent(subjectFeedback, student)}
             onOpenMeeting={() => startMeeting(filteredStudents, student.id)}
+            prior={priorYear[student.id] || null}
+            onUploadPriorYear={onUploadPriorYear}
+            onRemovePriorYear={onRemovePriorYear}
             onNoteChange={onNoteChange}
             onOpenNoteSuggestion={onOpenNoteSuggestion}
             onScrollToStudent={onScrollToStudent}
@@ -284,6 +292,7 @@ export function ClassTeacherDashboardScreen({
         notes={notes}
         decisions={decisions}
         feedback={subjectFeedback}
+        priorYear={priorYear}
         onIndexChange={(index) => setMeeting((current) => ({ ...current, index }))}
         onClose={() => setMeeting((current) => ({ ...current, open: false }))}
         onNoteChange={onNoteChange}
@@ -375,6 +384,9 @@ export function ClassTeacherStudentCard({
   onDecisionChange,
   feedbackEntries = [],
   onOpenMeeting,
+  prior = null,
+  onUploadPriorYear,
+  onRemovePriorYear,
   onNoteChange,
   onOpenNoteSuggestion,
   onScrollToStudent,
@@ -452,6 +464,7 @@ export function ClassTeacherStudentCard({
             </TooltipTrigger>
             <TooltipContent>{t("student.printCard")}</TooltipContent>
           </Tooltip>
+          <PriorYearButton student={student} prior={prior} displayName={displayName} onUpload={onUploadPriorYear} onRemove={onRemovePriorYear} />
           {onOpenMeeting ? <Button variant="outline" type="button" onClick={onOpenMeeting}><Presentation size={15} aria-hidden="true" />{t("meeting.open")}</Button> : null}
           <Button variant="ghost" type="button" onClick={() => onStartTour(student.id)}>{t("tour.button")}</Button>
           <div className={cn("grade-badge", student.thresholdBand?.className)}>{formatGrade(student.finalWeighted)}</div>
@@ -477,7 +490,7 @@ export function ClassTeacherStudentCard({
             onNone={showNoSubjects}
           />
           <p className="class-teacher-graph-hint">{c("classTeacherGraphHint")}</p>
-          <ClassTeacherLinesChart c={c} student={student} periods={loadedPeriods(analysis)} selectedSubjects={visibleSubjects} scaleMode={scaleMode} />
+          <ClassTeacherLinesChart c={c} student={student} periods={loadedPeriods(analysis)} selectedSubjects={visibleSubjects} scaleMode={scaleMode} prior={prior} />
         </section>
 
         <section className="card-section card-section--summary" data-tour-part="advice">
@@ -498,6 +511,7 @@ export function ClassTeacherStudentCard({
               ))}
             </div>
           ) : null}
+          <PriorSignalList signals={priorYearSignals(student, prior)} />
           <SubjectFeedbackList entries={feedbackEntries} />
         </section>
 
@@ -506,7 +520,7 @@ export function ClassTeacherStudentCard({
             <h4>{c("classTeacherSubjectMatrix")}</h4>
             <span>{analysis.track?.label || ""}</span>
           </div>
-          <ClassTeacherSubjectMatrix c={c} student={student} periods={loadedPeriods(analysis)} />
+          <ClassTeacherSubjectMatrix c={c} student={student} periods={loadedPeriods(analysis)} prior={prior} />
         </section>
 
         <section className="card-section notes-section" data-tour-part="notes">
@@ -561,8 +575,8 @@ export function ClassTeacherSubjectPicker({ c, student, selectedSubjects, onTogg
   );
 }
 
-export function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, scaleMode = "full" }) {
-  const linesRevealRef = useChartReveal(`${student.id}-${selectedSubjects.join("|")}-${scaleMode}`);
+export function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, scaleMode = "full", prior = null }) {
+  const linesRevealRef = useChartReveal(`${student.id}-${selectedSubjects.join("|")}-${scaleMode}-${prior ? "p" : ""}`);
   const width = 760;
   const height = 252;
   const left = 48;
@@ -571,7 +585,11 @@ export function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, 
   const bottom = 194;
   const axisWidth = width - left - right;
   const periodList = periods || [];
-  const xForIndex = (index) => left + (periodList.length <= 1 ? 0 : (index / (periodList.length - 1)) * axisWidth);
+  // With last year's report, slot 0 is "Vorig jaar" and this year's periods shift one slot right.
+  const offset = prior ? 1 : 0;
+  const slots = periodList.length + offset;
+  const xForSlot = (slot) => left + (slots <= 1 ? 0 : (slot / (slots - 1)) * axisWidth);
+  const xForIndex = (index) => xForSlot(index + offset);
   const subjectLines = (student.subjectLines || []).filter((line) => selectedSubjects.includes(line.subject));
   const overallPoints = (student.overallTrend?.points || []).map((point) => ({
     subject: c("classTeacherOverallLine"),
@@ -580,10 +598,23 @@ export function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, 
     value: point.value,
     isOverall: true,
   }));
+  const priorLines = prior
+    ? subjectLines.map((line, index) => ({ line, index, prior: priorValueFor(prior, line.subject) })).filter((item) => item.prior)
+    : [];
+  const priorOverall = Number.isFinite(prior?.overall?.tot) ? prior.overall.tot : null;
   const chartValues = [
     ...overallPoints.map((point) => point.value),
     ...subjectLines.flatMap((line) => (line.points || []).map((point) => point.value)),
+    ...priorLines.map((item) => item.prior.value),
+    priorOverall,
   ].filter(Number.isFinite);
+  const firstPoint = (points) => {
+    for (const [index, period] of periodList.entries()) {
+      const point = (points || []).find((item) => item.periodId === period.id && Number.isFinite(item.value));
+      if (point) return { x: xForIndex(index), value: point.value };
+    }
+    return null;
+  };
   const domain = classTeacherChartDomain(chartValues, scaleMode);
   const axisHeight = bottom - top;
   const yFor = (value) => bottom - ((clamp(value, domain.min, domain.max) - domain.min) / (domain.max - domain.min)) * axisHeight;
@@ -606,6 +637,47 @@ export function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, 
             <text className="axis-label" x={xForIndex(index)} y={bottom + 28} textAnchor="middle">{shortLabel(periodShortLabel(period), 16)}</text>
           </g>
         ))}
+        {prior ? (
+          <g className="prior-slot">
+            <line className="prior-slot__divider" x1={(xForSlot(0) + xForSlot(1)) / 2} y1={top} x2={(xForSlot(0) + xForSlot(1)) / 2} y2={bottom} />
+            <text className="axis-label prior-slot__label" x={xForSlot(0)} y={bottom + 28} textAnchor="middle">{t("prior.axis")}</text>
+          </g>
+        ) : null}
+        {priorLines.map(({ line, index, prior: priorValue }) => {
+          const color = CLASS_TEACHER_LINE_COLORS[index % CLASS_TEACHER_LINE_COLORS.length];
+          const next = firstPoint(line.points);
+          const x = xForSlot(0);
+          const y = yFor(priorValue.value);
+          const label = priorValue.source === "leadIn"
+            ? `${line.subject} ← ${priorValue.fromSubject} (${t("prior.axis")}): ${formatNumber(priorValue.value)}%`
+            : `${line.subject} (${t("prior.axis")}): ${formatNumber(priorValue.value)}%`;
+          return (
+            <g key={`prior-${line.subject}`} className={cn("prior-point", priorValue.source === "leadIn" && "is-lead-in")}>
+              {next ? <path data-draw d={`M ${x} ${y} L ${next.x} ${yFor(next.value)}`} fill="none" stroke={color} className="prior-point__link" /> : null}
+              <g className="class-teacher-line-dot" transform={`translate(${x}, ${y})`} tabIndex={0} aria-label={label}>
+                <text className="chart-svg-tooltip class-teacher-line-label" x="0" y="-14" textAnchor="middle">{shortLabel(label, 40)}</text>
+                <title>{label}</title>
+                <circle data-pop cx="0" cy="0" r="4.5" fill="var(--card)" stroke={color} strokeWidth="2" />
+              </g>
+            </g>
+          );
+        })}
+        {priorOverall !== null ? (() => {
+          const next = firstPoint(overallPoints);
+          const x = xForSlot(0);
+          const y = yFor(priorOverall);
+          const label = `${c("classTeacherOverallLine")} (${t("prior.axis")}): ${formatNumber(priorOverall)}%`;
+          return (
+            <g className="prior-point is-overall">
+              {next ? <path data-draw d={`M ${x} ${y} L ${next.x} ${yFor(next.value)}`} fill="none" stroke="var(--primary)" className="prior-point__link" /> : null}
+              <g className="class-teacher-line-dot" transform={`translate(${x}, ${y})`} tabIndex={0} aria-label={label}>
+                <text className="chart-svg-tooltip class-teacher-line-label" x="0" y="-14" textAnchor="middle">{label}</text>
+                <title>{label}</title>
+                <circle data-pop cx="0" cy="0" r="6" fill="var(--card)" stroke="var(--primary)" strokeWidth="2.5" />
+              </g>
+            </g>
+          );
+        })() : null}
         {subjectLines.map((line, index) => (
           <ClassTeacherLinePath
             key={line.subject}
@@ -673,7 +745,7 @@ export function ClassTeacherLinePath({ line, periods, color, xForIndex, yFor, ov
   );
 }
 
-export function ClassTeacherSubjectMatrix({ c, student, periods }) {
+export function ClassTeacherSubjectMatrix({ c, student, periods, prior = null }) {
   const periodIds = (periods || []).map((period) => period.id);
   return (
     <div className="table-scroll">
@@ -681,6 +753,7 @@ export function ClassTeacherSubjectMatrix({ c, student, periods }) {
         <TableHeader>
           <TableRow>
             <TableHead>{t("detected.subject")}</TableHead>
+            {prior ? <TableHead className="prior-column">{t("prior.column")}</TableHead> : null}
             {periods.map((period) => <TableHead key={period.id}>{shortLabel(periodShortLabel(period), 12)}</TableHead>)}
             <TableHead>{t("student.total")}</TableHead>
           </TableRow>
@@ -692,6 +765,7 @@ export function ClassTeacherSubjectMatrix({ c, student, periods }) {
                 <strong>{line.subject}</strong>
                 {line.isKeySubject ? <small>{c("classTeacherKeySubject")}</small> : null}
               </TableCell>
+              {prior ? <TableCell className="prior-column"><PriorCell prior={prior} subject={line.subject} /></TableCell> : null}
               {periodIds.map((periodId) => {
                 const point = line.points.find((item) => item.periodId === periodId);
                 return <TableCell key={periodId}>{Number.isFinite(point?.value) ? `${formatNumber(point.value)}%` : t("option.notAvailable")}</TableCell>;

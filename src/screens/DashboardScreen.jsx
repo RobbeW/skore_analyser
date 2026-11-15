@@ -87,6 +87,9 @@ export function DashboardScreen({
   decisions = {},
   onDecisionChange,
   onExportFeedback,
+  priorYear = {},
+  onUploadPriorYear,
+  onRemovePriorYear,
 }) {
   const [teacherName, setTeacherName] = useState("");
   const toggleFlag = (flag) => onFiltersChange({ flag: filters.flag === flag ? "all" : flag });
@@ -208,6 +211,9 @@ export function DashboardScreen({
             student={student}
             decision={decisions[student.id] || {}}
             onDecisionChange={onDecisionChange}
+            prior={priorYear[student.id] || null}
+            onUploadPriorYear={onUploadPriorYear}
+            onRemovePriorYear={onRemovePriorYear}
             peers={peerGroups.get(student.classCode) || filteredStudents}
             anonymised={anonymised}
             compact={compactCards}

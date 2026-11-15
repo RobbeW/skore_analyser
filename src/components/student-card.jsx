@@ -62,6 +62,9 @@ import { DEFAULT_OPEN_CARD_SECTIONS, SCHOOL_YEAR_DOMAIN_END, SCHOOL_YEAR_MONTHS 
 import { anonymousName, chartPointLabelPosition, clamp, evidenceParticipationContext, formatAvailablePoints, formatGrade, formatNumber, formatPercent, isExamPoint, linearTrendLineForPoints, pedagogicalNextStep, positionTrendPoints, renderTrendExplanation, renderVolatilityExplanation, sortStudents } from "../lib/app-helpers.jsx";
 import { CountUp, useChartReveal } from "../lib/use-motion.jsx";
 import { FlagWithHandling } from "./class-council.jsx";
+import { PriorYearButton } from "./prior-year.jsx";
+import { priorValueFor } from "../../js/prior-year-report.js";
+import { canonicalSubject } from "../../js/class-teacher-config.js";
 
 /** One row of class tiles (replaces separate tabs + overview cards): count, average, below cut-off, little evidence. */
 export function ClassTiles({ classes, students, selectedClass, threshold, onSelect }) {
@@ -197,8 +200,13 @@ export function StudentCard({
   isPrintTarget,
   onEvaluationClick,
   onHistogramClick,
+  prior = null,
+  onUploadPriorYear,
+  onRemovePriorYear,
 }) {
   const displayName = anonymised ? anonymousName(student) : student.name;
+  // Last year's result for this teacher's own subject (or its lead-in, e.g. Wetenschappen -> Biologie).
+  const priorSubject = prior ? priorValueFor(prior, canonicalSubject(student.subject || "")) : null;
   const peerIndex = peers.findIndex((peer) => peer.id === student.id);
   const previousPeer = peerIndex > 0 ? peers[peerIndex - 1] : null;
   const nextPeer = peerIndex >= 0 && peerIndex < peers.length - 1 ? peers[peerIndex + 1] : null;
@@ -247,6 +255,7 @@ export function StudentCard({
             </TooltipTrigger>
             <TooltipContent>{t("student.printCard")}</TooltipContent>
           </Tooltip>
+          <PriorYearButton student={student} prior={prior} displayName={displayName} onUpload={onUploadPriorYear} onRemove={onRemovePriorYear} />
           <Button variant="outline" type="button" onClick={() => onStartTour(student.id)}>{t("tour.button")}</Button>
           <div className={cn("grade-badge", student.thresholdBand.className)}>{formatGrade(student.finalWeighted)}</div>
         </CardAction>
@@ -258,7 +267,8 @@ export function StudentCard({
             <h4>{t("student.visualContext")}</h4>
             <span>{t("chart.clickDots")}</span>
           </div>
-          <YearTrend trend={student.trend} student={student} onEvaluationClick={onEvaluationClick} />
+          {prior ? <PriorSubjectLine priorSubject={priorSubject} current={student.finalWeighted} /> : null}
+          <YearTrend trend={student.trend} student={student} onEvaluationClick={onEvaluationClick} priorValue={priorSubject?.value ?? null} />
           <Accordion
             type="single"
             collapsible
@@ -482,7 +492,24 @@ export function PedagogicalSummary({ student }) {
   );
 }
 
-export function YearTrend({ trend, student, onEvaluationClick }) {
+/** One line above the chart: last year's TOT (DW / EX) for this subject and the change since. */
+function PriorSubjectLine({ priorSubject, current }) {
+  if (!priorSubject) return <p className="prior-subject muted">{t("prior.teacherNone")}</p>;
+  const item = priorSubject.item;
+  const fmt = (value) => (Number.isFinite(value) ? `${formatNumber(value)}%` : "–");
+  const delta = Number.isFinite(current) ? Math.round((current - priorSubject.value) * 10) / 10 : null;
+  return (
+    <p className={cn("prior-subject", priorSubject.source === "leadIn" && "is-lead-in")}>
+      <strong>{t("prior.teacherTitle")}:</strong>{" "}
+      {priorSubject.source === "leadIn"
+        ? t("prior.teacherLeadIn", { subject: priorSubject.fromSubject, tot: fmt(item.tot) })
+        : t("prior.teacherLine", { subject: priorSubject.fromSubject, tot: fmt(item.tot), dw: fmt(item.dw), ex: fmt(item.ex) })}
+      {delta !== null ? <span className={cn("prior-delta", delta < 0 ? "is-down" : "is-up")}> · {t("prior.delta", { delta: `${delta > 0 ? "+" : ""}${formatNumber(delta)}` })}</span> : null}
+    </p>
+  );
+}
+
+export function YearTrend({ trend, student, onEvaluationClick, priorValue = null }) {
   const trendRevealRef = useChartReveal(`${student?.id}-${trend?.points?.length || 0}`);
   const points = trend?.periodScores || [];
   if (points.length < 2) {
@@ -515,6 +542,12 @@ export function YearTrend({ trend, student, onEvaluationClick }) {
         {SCHOOL_YEAR_MONTHS.slice(1).map((month, index) => (
           <line key={`month-line-${month.labelKey}`} className="year-month-marker" x1={xFor(index + 1)} y1={top} x2={xFor(index + 1)} y2={bottom} />
         ))}
+        {Number.isFinite(priorValue) ? (
+          <g className="prior-reference">
+            <line x1={left} y1={yFor(priorValue)} x2={width - 20} y2={yFor(priorValue)} />
+            <text x={width - 22} y={yFor(priorValue) - 5} textAnchor="end">{t("prior.reference", { value: `${formatNumber(priorValue)}%` })}</text>
+          </g>
+        ) : null}
         <path data-draw d={linePath} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" />
         {trendLine ? (
           <line

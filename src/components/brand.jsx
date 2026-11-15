@@ -118,6 +118,9 @@ export function describeProgress({ stage, fileIndex = 0, fileCount = 1 } = {}) {
   if (stage === "parsing") return { text: t("splash.parsing"), ratio: 0.7 };
   if (stage === "analysing") return { text: t("splash.analysing"), ratio: 0.88 };
   if (stage === "project") return { text: t("splash.project"), ratio: 0.5 };
+  if (stage === "pdf") return { text: t("splash.pdf"), ratio: 0.3 };
+  if (stage === "pdfParse") return { text: t("splash.pdfParse"), ratio: 0.65 };
+  if (stage === "pdfMatch") return { text: t("splash.pdfMatch"), ratio: 0.9 };
   return { text: t("splash.done"), ratio: 1 };
 }
 

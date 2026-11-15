@@ -71,7 +71,10 @@ import { DashboardScreen } from "./screens/DashboardScreen.jsx";
 import { EvaluationReviewScreen, MappingScreen } from "./screens/SetupScreens.jsx";
 import { BrandMark, ImportSplash, LaunchIntro, useImportSplash } from "./components/brand.jsx";
 import { nextFrame } from "./lib/motion.js";
-import { buildSubjectFeedbackPayload, parseSubjectFeedback } from "./lib/teacher-decisions.js";
+import { buildSubjectFeedbackPayload, normaliseName, parseSubjectFeedback } from "./lib/teacher-decisions.js";
+import { browserInflate, extractPdfTextRuns } from "../js/pdf-text.js";
+import { parsePriorYearReport } from "../js/prior-year-report.js";
+import { PriorYearNameDialog } from "./components/prior-year.jsx";
 import { UploadScreen } from "./screens/UploadScreen.jsx";
 
 export default function App() {
@@ -91,6 +94,9 @@ export default function App() {
   const [notes, setNotes] = useState({});
   const [decisions, setDecisions] = useState({});
   const [subjectFeedback, setSubjectFeedback] = useState({});
+  // Prior-year reports per pupil (session + explicit project file only; never in localStorage).
+  const [priorYear, setPriorYear] = useState({});
+  const [pendingPrior, setPendingPrior] = useState(null);
   const [printOverview, setPrintOverview] = useState(false);
   const [presets, setPresets] = useState(() => loadPresets());
   const [status, setStatus] = useState({ kind: "idle", text: t("upload.empty") });
@@ -344,6 +350,7 @@ export default function App() {
         setNotes(saveNotes(nextWorkspaceKey, payload.teacherNotes || {}));
         setDecisions(saveDecisions(nextWorkspaceKey, payload.teacherDecisions || {}));
         setSubjectFeedback(payload.subjectFeedback && typeof payload.subjectFeedback === "object" ? payload.subjectFeedback : {});
+        setPriorYear(payload.priorYear && typeof payload.priorYear === "object" ? payload.priorYear : {});
         setProjectSaveState("saved");
         await splash.finish();
         setWorkflowStep(analyses.length ? "classTeacherReview" : "upload");
@@ -362,6 +369,7 @@ export default function App() {
       setFilters(normaliseFilters(restored.filters, restored.config.threshold));
       setNotes(saveNotes(restoredWorkspaceKey, restored.notes));
       setDecisions(saveDecisions(restoredWorkspaceKey, restored.decisions || {}));
+      setPriorYear(payload.priorYear && typeof payload.priorYear === "object" ? payload.priorYear : {});
       setProjectSaveState("saved");
       setStatus({
         kind: "success",
@@ -482,6 +490,8 @@ export default function App() {
     setNotes({});
     setDecisions({});
     setSubjectFeedback({});
+    setPriorYear({});
+    setPendingPrior(null);
     setFilters(defaultFilters());
     setActiveTour(null);
     setEvaluationDialog(null);
@@ -659,6 +669,51 @@ export default function App() {
     return { imported: imported.map((entry) => entry.subject), failed };
   }
 
+  /** Reads one pupil's Skore year report (PDF) from last school year and links it to the card. */
+  async function loadPriorYear(student, file, displayName) {
+    if (!student || !file) return;
+    splash.open();
+    try {
+      splash.update({ stage: "pdf" });
+      await nextFrame();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const pages = await extractPdfTextRuns(bytes, { inflate: browserInflate });
+      splash.update({ stage: "pdfParse" });
+      await nextFrame();
+      const report = parsePriorYearReport(pages, { fileName: file.name });
+      splash.update({ stage: "pdfMatch" });
+      await nextFrame();
+      await splash.finish();
+      const sameName = report.pupilName && normaliseName(report.pupilName) === normaliseName(student.name);
+      if (sameName) {
+        attachPriorYear(student.id, report);
+        setStatus({ kind: "success", text: t("prior.loaded", { name: displayName || student.name, year: report.schoolYear || "" }) });
+      } else {
+        // Different (or unreadable) name: let the teacher decide before linking.
+        setPendingPrior({ studentId: student.id, studentName: displayName || student.name, report, anonymisedName: displayName !== student.name });
+      }
+    } catch (error) {
+      console.error(error);
+      splash.close();
+      const message = error?.message === "NOT_SKORE_REPORT" || error?.message === "NOT_A_PDF" ? t("prior.notReport") : `${t("prior.readError")} ${error?.message || ""}`.trim();
+      setPendingPrior({ error: message, fileName: file.name });
+    }
+  }
+
+  function attachPriorYear(studentId, report) {
+    setPriorYear((current) => ({ ...current, [studentId]: report }));
+    markProjectDirty();
+  }
+
+  function removePriorYear(studentId) {
+    setPriorYear((current) => {
+      const next = { ...current };
+      delete next[studentId];
+      return next;
+    });
+    markProjectDirty();
+  }
+
   function saveProjectBackup() {
     if (appMode === "klassenleraar" && classTeacherAnalyses[0]) {
       const current = classTeacherAnalyses[0];
@@ -672,7 +727,7 @@ export default function App() {
         subjectFeedback,
       );
       const localSave = { ok: true };
-      exportJsonPayload(payload, `${current.classCode || "klassenleraar"}-project.json`);
+      exportJsonPayload({ ...payload, priorYear }, `${current.classCode || "klassenleraar"}-project.json`);
       setProjectSaveState(localSave.ok ? "saved" : "error");
       setStatus({
         kind: localSave.ok ? "success" : "warning",
@@ -684,7 +739,7 @@ export default function App() {
     const exportAnalysis = analysis || withAnonymousNumbers(calculateAnalysis(model, config));
     const payload = buildProjectPayload(model, config, exportAnalysis, notes, filters, decisions);
     const localSave = { ok: true };
-    exportProjectJson(model, config, exportAnalysis, notes, filters, decisions);
+    exportJsonPayload({ ...payload, priorYear }, `${String(model.fileName || "skore").replace(/\.[^.]+$/, "").replace(/[^a-z0-9-_]+/gi, "-")}-project.json`);
     setProjectSaveState(localSave.ok ? "saved" : "error");
     setStatus({
       kind: localSave.ok ? "success" : "warning",
@@ -847,6 +902,9 @@ export default function App() {
               decisions={decisions}
               onDecisionChange={updateDecision}
               onExportFeedback={exportSubjectFeedback}
+              priorYear={priorYear}
+              onUploadPriorYear={loadPriorYear}
+              onRemovePriorYear={removePriorYear}
               onScrollToStudent={scrollToStudent}
               onStartTour={startStudentTour}
               onPrintStudent={printStudentCard}
@@ -871,6 +929,9 @@ export default function App() {
               subjectFeedback={subjectFeedback}
               onImportFeedback={importSubjectFeedback}
               onPrintOverview={() => setPrintOverview(true)}
+              priorYear={priorYear}
+              onUploadPriorYear={loadPriorYear}
+              onRemovePriorYear={removePriorYear}
               onScrollToStudent={scrollToStudent}
               onStartTour={startStudentTour}
               onPrintStudent={printStudentCard}
@@ -881,6 +942,16 @@ export default function App() {
         </main>
 
         {workflowStep !== "upload" ? <Footer /> : null}
+
+        <PriorYearNameDialog
+          data={pendingPrior}
+          onConfirm={() => {
+            attachPriorYear(pendingPrior.studentId, pendingPrior.report);
+            setStatus({ kind: "success", text: t("prior.loaded", { name: pendingPrior.studentName, year: pendingPrior.report.schoolYear || "" }) });
+            setPendingPrior(null);
+          }}
+          onCancel={() => setPendingPrior(null)}
+        />
 
         <LaunchIntro />
         <ImportSplash state={splash.state} />
