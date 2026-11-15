@@ -112,7 +112,6 @@ export function DashboardScreen({
       <div className="dashboard-header">
         <div className="screen-heading">
           <div>
-            <p className="eyebrow">{t("step.4")}</p>
             <h2>{analysis.subject || t("dashboard.fallbackTitle")}</h2>
             <p>{t("dashboard.detectedLine", {
               fileName: analysis.fileName,
@@ -127,8 +126,8 @@ export function DashboardScreen({
         <div className="stats-grid">
           <StatCard label={t("detected.students")} value={stats.count} />
           <StatCard label={t("dashboard.classAverage")} value={`${formatNumber(stats.mean)}%`} />
-          <StatCard label={t("dashboard.below", { threshold: filters.threshold ?? 50 })} value={stats.belowThreshold} tone={stats.belowThreshold ? "alert" : undefined} onClick={() => toggleFlag(BELOW_THRESHOLD_FILTER)} pressed={filters.flag === BELOW_THRESHOLD_FILTER} hint={t("dashboard.kpiFilterHint")} />
-          <StatCard label={t("dashboard.incomplete")} value={stats.incomplete} onClick={() => toggleFlag("low_evidence_coverage")} pressed={filters.flag === "low_evidence_coverage"} hint={t("dashboard.kpiFilterHint")} />
+          <StatCard label={t("dashboard.below", { threshold: filters.threshold ?? 50 })} value={stats.belowThreshold} tone={stats.belowThreshold ? "alert" : undefined} onClick={() => toggleFlag(BELOW_THRESHOLD_FILTER)} pressed={filters.flag === BELOW_THRESHOLD_FILTER} />
+          <StatCard label={t("dashboard.incomplete")} value={stats.incomplete} onClick={() => toggleFlag("low_evidence_coverage")} pressed={filters.flag === "low_evidence_coverage"} />
         </div>
 
         <div className="filters" aria-label={t("filter.label")}>
@@ -156,7 +155,6 @@ export function DashboardScreen({
           <div className="handover">
             <div className="handover__text">
               <strong>{t("feedback.exportTitle")}</strong>
-              <p>{t("feedback.exportBody")}</p>
             </div>
             <label className="handover__field">
               <span className="sr-only">{t("feedback.teacherName")}</span>
@@ -174,7 +172,6 @@ export function DashboardScreen({
         <Card className="chart-panel">
           <CardHeader>
             <CardTitle>{t("chart.histogramTitle")}</CardTitle>
-            <CardDescription>{c("visibleAdvice")}</CardDescription>
           </CardHeader>
           <CardContent>
             <Histogram students={filteredStudents} anonymised={anonymised} onBinClick={onHistogramClick} />
@@ -183,7 +180,6 @@ export function DashboardScreen({
         <Card className="students-panel">
           <CardHeader>
             <CardTitle>{t("student.tableTitle")}</CardTitle>
-            <CardDescription>{t("student.openCard")}</CardDescription>
           </CardHeader>
           <CardContent>
             <StudentTable

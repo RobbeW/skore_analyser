@@ -148,9 +148,7 @@ export function ClassTeacherDashboardScreen({
       <div className="dashboard-header">
         <div className="screen-heading">
           <div>
-            <p className="eyebrow">{t("upload.mode.klassenleraar")}</p>
             <h2>{c("classTeacherDashboardTitle")}: {analysis.classCode}</h2>
-            <p>{c("classTeacherDashboardBody")}</p>
           </div>
           <Badge variant="secondary">{analysis.track?.label || t("option.notAvailable")}</Badge>
         </div>
@@ -181,7 +179,7 @@ export function ClassTeacherDashboardScreen({
           <StatCard label={c("classTeacherMainSubjectDanger")} value={keyRiskCount} tone={keyRiskCount ? "alert" : undefined} onClick={() => toggleFocus("mainSubjectDanger")} pressed={dashboardFilters.focus === "mainSubjectDanger"} />
           <StatCard label={c("classTeacherBelow65")} value={students.filter((student) => Number.isFinite(student.finalWeighted) && student.finalWeighted < 65).length} onClick={() => toggleFocus("below65")} pressed={dashboardFilters.focus === "below65"} />
           <StatCard label={c("classTeacherPositiveProfiles")} value={positiveCount} onClick={() => toggleFocus("positive")} pressed={dashboardFilters.focus === "positive"} />
-          <StatCard label={t("print.discussionCount")} value={discussionStudents.length} hint={t("meeting.discussionHint")} />
+          <StatCard label={t("print.discussionCount")} value={discussionStudents.length} />
         </div>
 
         {polishNotices.length ? <ClassTeacherNoticeList notices={polishNotices} /> : null}
@@ -203,7 +201,6 @@ export function ClassTeacherDashboardScreen({
       <Card className="heatmap-panel">
         <CardHeader>
           <CardTitle>{t("heatmap.title")}</CardTitle>
-          <CardDescription>{t("heatmap.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <ClassHeatmap
@@ -230,7 +227,6 @@ export function ClassTeacherDashboardScreen({
         <Card className="students-panel">
           <CardHeader>
             <CardTitle>{t("student.tableTitle")}</CardTitle>
-            <CardDescription>{t("student.openCard")}</CardDescription>
           </CardHeader>
           <CardContent>
             <ClassTeacherStudentTable
@@ -430,9 +426,6 @@ export function ClassTeacherStudentCard({
         <div>
           <CardTitle className="student-title">{displayName}</CardTitle>
           <div className="student-meta">
-            <Badge variant="outline">{student.classCode}</Badge>
-            <Badge variant="outline">{analysis.track?.label || t("option.notAvailable")}</Badge>
-            <Badge variant="secondary">{formatGrade(student.finalWeighted)}</Badge>
           </div>
         </div>
         <CardAction className="student-actions">
@@ -489,14 +482,12 @@ export function ClassTeacherStudentCard({
             onAllSubjects={showAllSubjects}
             onNone={showNoSubjects}
           />
-          <p className="class-teacher-graph-hint">{c("classTeacherGraphHint")}</p>
           <ClassTeacherLinesChart c={c} student={student} periods={loadedPeriods(analysis)} selectedSubjects={visibleSubjects} scaleMode={scaleMode} prior={prior} />
         </section>
 
         <section className="card-section card-section--summary" data-tour-part="advice">
           <div className="advice-summary">
             <strong>{t("advice.summaryTitle")}</strong>
-            <p>{summary.title}</p>
             <p>{summary.body}</p>
           </div>
           {detailFlags.length ? (
@@ -531,9 +522,11 @@ export function ClassTeacherStudentCard({
                 <Sparkles size={14} aria-hidden="true" />
                 {t("noteSuggestion.button")}
               </Button>
-              <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
-                {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
-              </span>
+              {noteStatus !== "idle" ? (
+                <span className={cn("note-save-state", `is-${noteStatus}`)} role="status">
+                  {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
+                </span>
+              ) : null}
             </div>
           </div>
           <Textarea
@@ -566,7 +559,7 @@ export function ClassTeacherSubjectPicker({ c, student, selectedSubjects, onTogg
             <label key={line.subject} className={cn("subject-checkbox", line.isKeySubject && "is-key-subject")}>
               <input type="checkbox" checked={selectedSubjects.includes(line.subject)} onChange={() => onToggle(line.subject)} />
               <span>{line.subject}</span>
-              {line.isKeySubject ? <small>{c("classTeacherKeySubject")}</small> : null}
+              {line.isKeySubject ? <span className="key-dot" title={c("classTeacherKeySubject")} aria-label={c("classTeacherKeySubject")} /> : null}
             </label>
           ))}
         </div>
@@ -700,7 +693,6 @@ export function ClassTeacherLinesChart({ c, student, periods, selectedSubjects, 
       </svg>
       <figcaption className="class-teacher-chart-legend">
         <span><i style={{ background: "var(--primary)" }} />{c("classTeacherOverallLine")}</span>
-        <span><i />{selectedSubjects.length} {c("classTeacherSubjectLines").toLowerCase()}</span>
       </figcaption>
     </figure>
   );
@@ -763,7 +755,7 @@ export function ClassTeacherSubjectMatrix({ c, student, periods, prior = null })
             <TableRow key={line.subject} className={line.isKeySubject ? "is-key-subject-row" : ""}>
               <TableCell>
                 <strong>{line.subject}</strong>
-                {line.isKeySubject ? <small>{c("classTeacherKeySubject")}</small> : null}
+                {line.isKeySubject ? <span className="key-dot" title={c("classTeacherKeySubject")} aria-label={c("classTeacherKeySubject")} /> : null}
               </TableCell>
               {prior ? <TableCell className="prior-column"><PriorCell prior={prior} subject={line.subject} /></TableCell> : null}
               {periodIds.map((periodId) => {

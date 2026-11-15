@@ -77,9 +77,7 @@ export function EvaluationReviewScreen({
       <FlowIndicator active="review" c={c} />
       <div className="screen-heading">
         <div>
-          <p className="eyebrow">{t("step.2")}</p>
           <h2>{t("review.title")}</h2>
-          <p>{t("review.subtitle")}</p>
         </div>
         <Button type="button" onClick={onContinue}>
           <ChevronRight size={16} aria-hidden="true" />
@@ -95,9 +93,9 @@ export function EvaluationReviewScreen({
               <StatCard label={t("usage.displayOnly")} value={counts.displayOnly} compact />
               <StatCard label={t("usage.exclude")} value={counts.exclude} compact />
             </div>
-            <div className="review-suggestions">
-              <strong>{t("review.suggestedTitle")}</strong>
-              {suggestions.length ? (
+            {suggestions.length ? (
+              <div className="review-suggestions">
+                <strong>{t("review.suggestedTitle")}</strong>
                 <ul>
                   {suggestions.map((item) => (
                     <li key={`${item.assignment.id}-${item.reasonKey}`}>
@@ -106,18 +104,14 @@ export function EvaluationReviewScreen({
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p>{t("review.suggestedEmpty")}</p>
-              )}
-            </div>
-            <div className={cn("status-pill", `status-pill--${status.kind}`)}>{status.text}</div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
         <Card className="evaluation-review-card">
           <CardHeader>
             <CardTitle>{t("review.tableTitle")}</CardTitle>
-            <CardDescription>{t("review.tableHelp")}</CardDescription>
           </CardHeader>
           <CardContent>
             <EvaluationUsageTable
@@ -158,7 +152,6 @@ export function MappingScreen({
       <FlowIndicator active="map" c={c} />
       <div className="screen-heading">
         <div>
-          <p className="eyebrow">{t("step.3")}</p>
           <h2>{t("mapping.title")}</h2>
         </div>
         <Button type="button" disabled={isBusy} onClick={onGenerate}>
@@ -166,8 +159,6 @@ export function MappingScreen({
           {isBusy ? t("mapping.generating") : t("mapping.generate")}
         </Button>
       </div>
-
-      <SetupProgressRail />
 
       <div className="map-grid">
         <DetectedSummary model={model} />
@@ -180,7 +171,6 @@ export function MappingScreen({
             <div className="step-number">1</div>
             <div>
               <CardTitle>{t("mapping.stepCourse")}</CardTitle>
-              <CardDescription>{t("mapping.stepCourseHelp")}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="form-grid">
@@ -205,7 +195,6 @@ export function MappingScreen({
             <div className="step-number">2</div>
             <div>
               <CardTitle>{t("mapping.stepBaskets")}</CardTitle>
-              <CardDescription>{t("mapping.stepBasketsHelp")}</CardDescription>
             </div>
           </CardHeader>
           <CardContent>
@@ -238,10 +227,7 @@ export function MappingScreen({
             </div>
             {transferPairs.length ? (
               <div className="basket-transfer-panel">
-                <div>
-                  <p className="eyebrow">{t("mapping.transferTitle")}</p>
-                  <strong>{t("mapping.transferIntro")}</strong>
-                </div>
+                <strong title={t("mapping.transferIntro")}>{t("mapping.transferTitle")}</strong>
                 <div className="basket-transfer-list">
                   {transferPairs.map((pair) => (
                     <span key={`${pair.dw}-${pair.ex}`} className="basket-transfer-chip">
@@ -294,7 +280,6 @@ export function MappingScreen({
             <div className="step-number">3</div>
             <div>
               <CardTitle>{t("mapping.stepCheck")}</CardTitle>
-              <CardDescription>{t("mapping.stepCheckHelp")}</CardDescription>
             </div>
             <CardAction>
               <Button type="button" disabled={isBusy} onClick={onGenerate}>
@@ -304,7 +289,6 @@ export function MappingScreen({
             </CardAction>
           </CardHeader>
           <CardContent>
-            <div className={cn("status-pill", `status-pill--${status.kind}`)}>{status.text}</div>
           </CardContent>
         </Card>
       </div>

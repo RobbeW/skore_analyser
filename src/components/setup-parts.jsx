@@ -129,7 +129,6 @@ export function DetectedSummary({ model }) {
     <Card className="detected-summary-card">
       <CardHeader>
         <div>
-          <p className="eyebrow">{t("detected.ready")}</p>
           <CardTitle>{primarySubject}</CardTitle>
           <CardDescription>{t("detected.simpleLine", {
             fileName: model.fileName,
@@ -142,14 +141,6 @@ export function DetectedSummary({ model }) {
           <Badge>{model.totals.missingCells} {t("detected.blankScores").toLowerCase()}</Badge>
         </CardAction>
       </CardHeader>
-      <CardContent>
-        <div className="detected-grid">
-          <StatCard label={t("detected.workbook")} value={model.fileName} compact />
-          <StatCard label={t("detected.classes")} value={classList} compact />
-          <StatCard label={t("detected.students")} value={model.students.length} compact />
-          <StatCard label={t("detected.assignments")} value={model.assignments.length} compact />
-        </div>
-      </CardContent>
     </Card>
   );
 }
@@ -203,7 +194,6 @@ export function EvaluationUsageTable({ assignments, config, onAssignmentChange }
             <TableRow key={assignment.id} className={cn("evaluation-usage-row", usage !== "include" && "is-muted")}>
               <TableCell>
                 <strong>{assignment.title}</strong>
-                <small>{assignment.subject || ""}</small>
               </TableCell>
               <TableCell>{assignment.sheetName}</TableCell>
               <TableCell>{assignment.date || t("option.notAvailable")}</TableCell>

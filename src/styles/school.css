@@ -639,3 +639,33 @@ h1, h2, h3, h4 {
     display: none !important;
   }
 }
+
+/* Compact notices: one line, no card */
+.class-teacher-notice-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.class-teacher-notice.class-teacher-notice--compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.class-teacher-notice--compact strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.class-teacher-notice--compact svg {
+  color: var(--primary-hover);
+}

@@ -121,7 +121,6 @@ export function UploadScreen({
 
       <div className="upload-stage">
         <div className="upload-copy">
-          <p className="eyebrow">{t("app.brand")}</p>
           <h2>{t("upload.title")}</h2>
           <p>{t("upload.subtitle")}</p>
           <div className="mode-toggle" ref={modeRef} role="group" aria-label={t("upload.roleLabel")}>
@@ -135,7 +134,6 @@ export function UploadScreen({
                 aria-pressed={appMode === mode}
               >
                 <span>{t(`upload.mode.${mode}`)}</span>
-                <small>{mode === "klassenleraar" ? c("roleHelpKlassenleraar") : c("roleHelpVakdocent")}</small>
               </button>
             ))}
           </div>
@@ -170,7 +168,6 @@ export function UploadScreen({
                 <UploadCloud size={28} />
               </span>
               <span className="drop-zone-title">{isClassTeacherMode ? t("upload.classTeacherDropTitle") : t("upload.dropTitle")}</span>
-              <span className="drop-zone-help">{isClassTeacherMode ? t("upload.classTeacherHelp") : t("upload.help")}</span>
             </button>
 
             {uploadSummary ? (
@@ -190,7 +187,6 @@ export function UploadScreen({
                 <FolderOpen size={16} aria-hidden="true" />
                 {t("button.importProject")}
               </Button>
-              <span>{t("upload.importHelp")}</span>
             </div>
 
             <div className={cn("status-pill", `status-pill--${status.kind}`)} aria-live="polite">

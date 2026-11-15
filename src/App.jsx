@@ -1004,7 +1004,6 @@ function AppHeader({ preferences, projectSaveState, onAnonymiseChange, onSavePro
       <div className="brand-heading">
         <BrandMark size={40} className="brand-mark-svg" />
         <div>
-          <p className="eyebrow">{t("app.brand")}</p>
           <h1>{t("app.heading")}</h1>
         </div>
       </div>

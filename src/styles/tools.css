@@ -150,8 +150,9 @@
 }
 
 .heatmap__scroll {
-  max-height: 32rem;
-  overflow: auto;
+  /* Whole class visible: only scroll sideways when there are many subjects. */
+  overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--border);
   border-radius: var(--radius-small);
 }
@@ -167,7 +168,7 @@
 
 .heatmap__table th,
 .heatmap__table td {
-  padding: 0.3rem 0.45rem;
+  padding: 0.2rem 0.45rem;
   border-bottom: 1px solid var(--border);
   text-align: center;
   white-space: nowrap;
@@ -801,5 +802,43 @@
   .prior-year-control button,
   .prior-chip__remove {
     display: none !important;
+  }
+}
+
+/* Minimal labels: a dot marks a hoofdvak (explained once in the class-overview legend). */
+.key-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.heatmap__table thead th .key-dot {
+  display: block;
+  margin: 0.2rem auto 0;
+}
+
+/* Signal follow-up buttons only on hover/focus, or when one was chosen. */
+.flag-detail-row .flag-handling {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+.flag-detail-row:hover .flag-handling,
+.flag-detail-row:focus-within .flag-handling,
+.flag-detail-row.is-handled .flag-handling {
+  opacity: 1;
+}
+
+.flag-detail-row.is-handled:not(:hover):not(:focus-within) .flag-handling__btn:not(.is-active) {
+  display: none;
+}
+
+@media (hover: none) {
+  .flag-detail-row .flag-handling {
+    opacity: 1;
   }
 }

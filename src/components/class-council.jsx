@@ -77,6 +77,7 @@ export function ClassHeatmap({ c, analysis, students, anonymised, feedback, deci
         <span><i className="heat-chip heat-chip--cap" />{t("heatmap.legendCap")}</span>
         <span><i className="heat-chip heat-chip--ok" />{t("heatmap.legendOk")}</span>
         <span><i className="heat-dot" />{t("heatmap.legendFeedback")}</span>
+        <span><i className="key-dot" />{c("classTeacherKeySubject")}</span>
       </div>
       <div className="heatmap__scroll" tabIndex={0} aria-label={t("heatmap.title")}>
         <table className="heatmap__table">
@@ -88,7 +89,7 @@ export function ClassHeatmap({ c, analysis, students, anonymised, feedback, deci
               {subjects.map((subject) => (
                 <th key={subject.subject} scope="col" title={subject.subject} className={cn(subject.isKeySubject && "is-key")}>
                   <span>{shortLabel(subject.subject, 11)}</span>
-                  {subject.isKeySubject ? <small>{c("classTeacherKeySubject")}</small> : null}
+                  {subject.isKeySubject ? <span className="key-dot" title={c("classTeacherKeySubject")} aria-label={c("classTeacherKeySubject")} /> : null}
                 </th>
               ))}
               <th scope="col">{t("heatmap.status")}</th>
@@ -138,7 +139,6 @@ export function ClassHeatmap({ c, analysis, students, anonymised, feedback, deci
           </tfoot>
         </table>
       </div>
-      <p className="heatmap__hint">{t("heatmap.hint")}</p>
     </div>
   );
 }
@@ -307,7 +307,6 @@ export function MeetingMode({
           <div className="meeting__grid">
             <section className="meeting__panel">
               <h3>{t("advice.summaryTitle")}</h3>
-              <p className="meeting__summary-title">{summary.title}</p>
               <p>{summary.body}</p>
               {keyFlags.length ? (
                 <div className="chip-row">

@@ -87,9 +87,7 @@ export function ClassTeacherReviewScreen({
       <FlowIndicator active="classTeacherReview" c={c} />
       <div className="screen-heading">
         <div>
-          <p className="eyebrow">{t("upload.mode.klassenleraar")}</p>
           <h2>{c("classTeacherReviewTitle")}</h2>
-          <p>{c("classTeacherReviewBody")}</p>
         </div>
         <Button type="button" onClick={onConfirm} disabled={Boolean(blockingIssues.length)}>
           <ArrowRight size={16} aria-hidden="true" />
@@ -129,7 +127,6 @@ export function ClassTeacherReviewScreen({
         <Card>
           <CardHeader>
             <CardTitle>{t("detected.track")}</CardTitle>
-            <CardDescription>{c("classTeacherTrackHelp")}</CardDescription>
           </CardHeader>
           <CardContent className="class-teacher-stack">
             {analyses.map((analysis) => {
@@ -162,7 +159,6 @@ export function ClassTeacherReviewScreen({
         <Card className="class-teacher-wide-card">
           <CardHeader>
             <CardTitle>{t("detected.files")}</CardTitle>
-            <CardDescription>{t("review.tableHelp")}</CardDescription>
           </CardHeader>
           <CardContent className="table-scroll">
             <Table>
@@ -201,7 +197,6 @@ export function ClassTeacherReviewScreen({
         <Card>
           <CardHeader>
             <CardTitle>{t("detected.subject")}</CardTitle>
-            <CardDescription>{c("classTeacherSubjectHelp")}</CardDescription>
           </CardHeader>
           <CardContent className="class-teacher-stack">
             {analyses.map((analysis) => {
@@ -234,7 +229,6 @@ export function ClassTeacherReviewScreen({
         <Card>
           <CardHeader>
             <CardTitle>{t("detected.students")}</CardTitle>
-            <CardDescription>{c("classTeacherStudentsHelp")}</CardDescription>
           </CardHeader>
           <CardContent className="table-scroll">
             <Table>
@@ -267,13 +261,11 @@ export function ClassTeacherNoticeList({ notices }) {
   return (
     <div className="class-teacher-notice-list">
       {notices.map((notice) => (
-        <div className="class-teacher-notice" key={notice.id}>
-          <ShieldCheck size={17} aria-hidden="true" />
-          <div>
-            <strong>{notice.title}</strong>
-            <p>{notice.body}</p>
-          </div>
-        </div>
+        <p className="class-teacher-notice class-teacher-notice--compact" key={notice.id}>
+          <ShieldCheck size={15} aria-hidden="true" />
+          <strong>{notice.title}</strong>
+          <span>{notice.body}</span>
+        </p>
       ))}
     </div>
   );

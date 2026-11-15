@@ -222,7 +222,6 @@ export function StudentCard({
           <CardTitle className="student-title">{displayName}</CardTitle>
           <div className="student-meta">
             <Badge variant="outline">{student.classCode}</Badge>
-            <Badge variant="outline">{student.subject || ""}</Badge>
             <EvidenceParticipationBadge student={student} peers={peers} />
           </div>
         </div>
@@ -265,7 +264,6 @@ export function StudentCard({
         <section className="card-section card-section--graph" data-tour-part="graph">
           <div className="section-row graph-section-heading">
             <h4>{t("student.visualContext")}</h4>
-            <span>{t("chart.clickDots")}</span>
           </div>
           {prior ? <PriorSubjectLine priorSubject={priorSubject} current={student.finalWeighted} /> : null}
           <YearTrend trend={student.trend} student={student} onEvaluationClick={onEvaluationClick} priorValue={priorSubject?.value ?? null} />
@@ -329,9 +327,11 @@ export function StudentCard({
                 <Sparkles size={14} aria-hidden="true" />
                 {t("noteSuggestion.button")}
               </Button>
-              <span className={cn("note-save-state", noteStatus !== "idle" && `is-${noteStatus}`)}>
-                {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
-              </span>
+              {noteStatus !== "idle" ? (
+                <span className={cn("note-save-state", `is-${noteStatus}`)} role="status">
+                  {noteStatus === "saving" ? t("notes.saving") : noteStatus === "error" ? t("notes.error") : t("notes.saved")}
+                </span>
+              ) : null}
             </div>
           </div>
           <Textarea
