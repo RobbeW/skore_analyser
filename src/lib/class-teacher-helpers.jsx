@@ -222,6 +222,22 @@ export function classTeacherBlockingIssues(analyses = []) {
   return unique(issues);
 }
 
+// The Controle step only opens when something was not mapped or is incomplete:
+// a blocking issue, an unknown track, an unrecognised subject or report period,
+// or a gap in the periods (a report missing before the latest loaded one).
+// Later periods that have not happened yet (mid-year councils) are normal.
+export function classTeacherNeedsReview(analyses = []) {
+  if (classTeacherBlockingIssues(analyses).length) return true;
+  return analyses.some((analysis) => {
+    if (!analysis.track?.id) return true;
+    if ((analysis.subjects || []).some((subject) => !subject.known)) return true;
+    if ((analysis.warnings || []).some((warning) => warning.code === "unknown_period_report")) return true;
+    const periods = analysis.periods || [];
+    const lastLoaded = periods.map((period) => !period.missing).lastIndexOf(true);
+    return periods.some((period, index) => index < lastLoaded && period.missing && !period.optional);
+  });
+}
+
 export function classTeacherPolishNotices(analysis, c) {
   if (!analysis) return [];
   const notices = [];

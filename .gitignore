@@ -10,3 +10,17 @@ dist/
 example_data/**/*.xlsx
 example_data/*.xlsx
 example_data/**/*.pdf
+
+# Pupil data never belongs in git (privacy). Only the weight-table images are kept.
+example_data/**
+!example_data/Gewichten_2026/
+!example_data/Gewichten_2026/*.png
+example_folder_klassenleraar/
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.pdf
+skore-*.json
+*-project.json
+vakfeedback-*.json

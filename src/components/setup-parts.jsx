@@ -84,7 +84,7 @@ export function SetupProgressRail() {
   );
 }
 
-export function FlowIndicator({ active, c }) {
+export function FlowIndicator({ active, c, onNavigate }) {
   const listRef = useRef(null);
   const steps = active === "classTeacherReview" || active === "classTeacherDashboard"
     ? [
@@ -104,7 +104,11 @@ export function FlowIndicator({ active, c }) {
       {steps.map(([id, label], index) => (
         <li key={id} className={cn(index < activeIndex && "is-complete", id === active && "is-active")} aria-current={id === active ? "step" : undefined}>
           <span>{index < activeIndex ? "✓" : index + 1}</span>
-          <strong>{label}</strong>
+          {onNavigate && index < activeIndex && id !== "upload" ? (
+            <button type="button" className="flow-indicator__link" onClick={() => onNavigate(id)}>{label}</button>
+          ) : (
+            <strong>{label}</strong>
+          )}
         </li>
       ))}
       <SlideIndicator containerRef={listRef} activeSelector=".is-active" className="flow-indicator__bar" as="li" deps={[active]} />

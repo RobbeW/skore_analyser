@@ -117,12 +117,20 @@ export function UploadScreen({
           <BrandMark size={36} className="brand-mark-svg" />
           <span>{t("app.brand")}</span>
         </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="privacy-badge" aria-label={t("upload.privacyLabel")}>
+              <ShieldCheck size={16} aria-hidden="true" />
+              <span>{t("upload.privacyLabel")}</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{t("upload.empty")}</TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="upload-stage">
         <div className="upload-copy">
           <h2>{t("upload.title")}</h2>
-          <p>{t("upload.subtitle")}</p>
           <div className="mode-toggle" ref={modeRef} role="group" aria-label={t("upload.roleLabel")}>
             <SlideIndicator containerRef={modeRef} className="mode-indicator" withHeight deps={[appMode]} />
             {APP_MODES.map((mode) => (
@@ -189,10 +197,13 @@ export function UploadScreen({
               </Button>
             </div>
 
-            <div className={cn("status-pill", `status-pill--${status.kind}`)} aria-live="polite">
-              {isBusy ? <Spinner /> : <ShieldCheck size={15} aria-hidden="true" />}
-              <span>{status.text}</span>
-            </div>
+            {/* Idle text is the privacy note, which now lives in the topbar tooltip. */}
+            {status.kind !== "idle" ? (
+              <div className={cn("status-pill", `status-pill--${status.kind}`)} aria-live="polite">
+                {isBusy ? <Spinner /> : <ShieldCheck size={15} aria-hidden="true" />}
+                <span>{status.text}</span>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

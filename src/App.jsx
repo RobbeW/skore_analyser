@@ -64,7 +64,7 @@ import { EvaluationDialog, HistogramDialog, NoteSuggestionDialog, StudentTourOve
 import { Footer } from "./components/layout.jsx";
 import { APP_MODES, BASKET_PRESETS, DEFAULT_OPEN_CARD_SECTIONS, FALLBACK_COPY, TOUR_REQUIRED_SECTIONS, cardTourStepsForMode, defaultFilters } from "./lib/app-constants.jsx";
 import { basketCategoriesFromConfig, categoriesFromPreset, createInitialConfig, filterStudents, inferBasketCategory, normaliseFilters, preferenceSubjectKey, preferredClassCode, unique, withAnonymousNumbers } from "./lib/app-helpers.jsx";
-import { buildClassTeacherProjectPayload, buildClassTeacherUploadSummary, calculateClassTeacherAnalysesFromReports, classTeacherBlockingIssues } from "./lib/class-teacher-helpers.jsx";
+import { buildClassTeacherProjectPayload, buildClassTeacherUploadSummary, calculateClassTeacherAnalysesFromReports, classTeacherBlockingIssues, classTeacherNeedsReview } from "./lib/class-teacher-helpers.jsx";
 import { ClassTeacherDashboardScreen } from "./screens/ClassTeacherDashboardScreen.jsx";
 import { ClassTeacherReviewScreen } from "./screens/ClassTeacherReviewScreen.jsx";
 import { DashboardScreen } from "./screens/DashboardScreen.jsx";
@@ -307,7 +307,10 @@ export default function App() {
         ].filter(Boolean).join(" "),
       });
       await splash.finish();
-      if (summary.classes === 1) setWorkflowStep("classTeacherReview");
+      if (summary.classes === 1) {
+        if (classTeacherNeedsReview(analyses)) setWorkflowStep("classTeacherReview");
+        else confirmClassTeacherMapping(analyses);
+      }
     } catch (error) {
       console.error(error);
       splash.close();
@@ -440,13 +443,13 @@ export default function App() {
     recomputeClassTeacherReview(classTeacherReports, classTeacherTrackOverrides, nextOverrides);
   }
 
-  function confirmClassTeacherMapping() {
-    const blockingIssues = classTeacherBlockingIssues(classTeacherAnalyses);
+  function confirmClassTeacherMapping(analyses = classTeacherAnalyses) {
+    const blockingIssues = classTeacherBlockingIssues(analyses);
     if (blockingIssues.length) {
       setStatus({ kind: "warning", text: c("classTeacherBlocked") });
       return;
     }
-    const current = classTeacherAnalyses[0];
+    const current = analyses[0];
     const nextWorkspaceKey = `klassenleraar::${current?.classCode || "klas"}::${current?.periodSchemaId || "periodes"}`.toLowerCase();
     setNotes(loadNotes(nextWorkspaceKey));
     setDecisions(loadDecisions(nextWorkspaceKey));
@@ -862,7 +865,7 @@ export default function App() {
               onTrackChange={updateClassTeacherTrack}
               onPeriodChange={updateClassTeacherPeriod}
               onSubjectChange={updateClassTeacherSubject}
-              onConfirm={confirmClassTeacherMapping}
+              onConfirm={() => confirmClassTeacherMapping()}
             />
           ) : null}
 
@@ -932,6 +935,7 @@ export default function App() {
               priorYear={priorYear}
               onUploadPriorYear={loadPriorYear}
               onRemovePriorYear={removePriorYear}
+              onNavigateStep={setWorkflowStep}
               onScrollToStudent={scrollToStudent}
               onStartTour={startStudentTour}
               onPrintStudent={printStudentCard}

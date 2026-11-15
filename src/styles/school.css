@@ -669,3 +669,53 @@ h1, h2, h3, h4 {
 .class-teacher-notice--compact svg {
   color: var(--primary-hover);
 }
+
+/* Upload: compact, centred role buttons (no help line any more) */
+.mode-choice {
+  min-height: 0;
+  padding: 0.6rem 1rem;
+  place-content: center;
+  text-align: center;
+}
+
+/* Privacy note lives behind a small badge with a tooltip */
+.privacy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: help;
+  transition: color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+}
+
+.privacy-badge:hover,
+.privacy-badge:focus-visible {
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+
+/* Completed steps in the step bar can be reopened (e.g. Controle after auto-skip) */
+.flow-indicator__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--motion-fast) var(--ease-standard);
+}
+
+.flow-indicator__link:hover,
+.flow-indicator__link:focus-visible {
+  text-decoration-color: currentColor;
+}

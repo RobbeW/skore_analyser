@@ -94,6 +94,7 @@ export function ClassTeacherDashboardScreen({
   priorYear = {},
   onUploadPriorYear,
   onRemovePriorYear,
+  onNavigateStep,
 }) {
   const students = useMemo(
     () => [...analysis.students].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
@@ -144,7 +145,7 @@ export function ClassTeacherDashboardScreen({
 
   return (
     <section className="workflow-screen dashboard-screen class-teacher-dashboard-screen">
-      <FlowIndicator active="classTeacherDashboard" c={c} />
+      <FlowIndicator active="classTeacherDashboard" c={c} onNavigate={onNavigateStep} />
       <div className="dashboard-header">
         <div className="screen-heading">
           <div>
