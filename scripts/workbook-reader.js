@@ -158,9 +158,11 @@ function firstBlock(xml, name) {
 }
 
 function matchFullTags(xml, name) {
-  return Array.from(xml.matchAll(new RegExp(`(<${name}\\b[^>]*>)([\\s\\S]*?)<\\/${name}>`, "g"))).map((match) => ({
-    openTag: match[1],
-    inner: match[2],
+  // Self-closing tags (e.g. an empty styled cell `<c r="D5" s="8"/>`) must be matched on their own;
+  // otherwise the open-tag pattern swallows them and pairs them with the next cell's `</c>`.
+  return Array.from(xml.matchAll(new RegExp(`(<${name}\\b[^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/${name}>)`, "g"))).map((match) => ({
+    openTag: `${match[1]}>`,
+    inner: match[2] || "",
   }));
 }
 
