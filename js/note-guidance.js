@@ -278,7 +278,7 @@ export function buildClassTeacherNoteContext(student, analysis = {}) {
     : 0;
 
   const supportingData = [
-    finalWeighted != null ? `Jaartotaal: ${formatScore(finalWeighted)}%.` : "",
+    finalWeighted != null ? `Totaal: ${formatScore(finalWeighted)}%.` : "",
     alarmLists.mainSubjects.length ? `Hoofdvakken onder opvolgingsgrens: ${alarmLists.mainSubjects.join(", ")}.` : "",
     alarmLists.otherSubjects.length ? `Andere vakken onder opvolgingsgrens: ${alarmLists.otherSubjects.join(", ")}.` : "",
     Number.isFinite(student?.subjectSpread?.stddev) ? `Spreiding tussen vakken: ${formatScore(student.subjectSpread.stddev)} punten.` : "",
@@ -521,7 +521,7 @@ function subjectConcerns(primaryPattern, weakestCategory) {
 
 function classTeacherStrengths(student, primaryPattern) {
   if (primaryPattern === "stable_overall_results") return ["Stabiel algemeen resultatenbeeld."];
-  if (numberOrNull(student?.finalWeighted) >= 75) return ["Algemeen jaartotaal ligt in een sterke zone."];
+  if (numberOrNull(student?.finalWeighted) >= 75) return ["Algemeen totaal ligt in een sterke zone."];
   return [];
 }
 

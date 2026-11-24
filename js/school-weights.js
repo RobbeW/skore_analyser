@@ -272,7 +272,10 @@ export function parseWeightsCollection(text, options = {}) {
  */
 export function weightedOverall(subjectScores = [], table, basis = "total") {
   if (!table) return null;
-  const weights = new Map(table.subjects.map((item) => [item.subject, basis === "dw" ? item.dw : item.total]));
+  // Before the exams ("dw" basis) Skore counts an exam subject with its DW weight only, but a
+  // subject without an exam with its full weight (grade 1: DW x 3). Checked against the algemeen
+  // totaal of 2STEAM4 Trimester 1 (no exams yet): exact to 0.1 for all 23 pupils.
+  const weights = new Map(table.subjects.map((item) => [item.subject, basis === "dw" && item.hasExam ? item.dw : item.total]));
   let sum = 0;
   let weightSum = 0;
   const used = [];

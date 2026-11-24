@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { aggregateClassTeacherReportGroups } from "../js/class-teacher-aggregator.js";
 import { calculateClassTeacherAnalysis } from "../js/class-teacher-calculator.js";
-import { canonicalSubject, inferPeriodFromText, isKnownSubject, periodSchemaForYear } from "../js/class-teacher-config.js";
+import { canonicalSubject, inferPeriodFromText, inferTrackFromClassCode, isKnownSubject, periodSchemaForYear } from "../js/class-teacher-config.js";
 import { parseClassTeacherReportWorkbook } from "../js/class-teacher-parser.js";
 import {
   appendSuggestionToNote,
@@ -18,6 +18,7 @@ import { applySchoolWeightsToAggregation, builtInWeightTables, findSchoolWeights
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EXAMPLE_FOLDER = path.join(ROOT, "example_folder_klassenleraar");
+const FIRST_GRADE_FOLDER = path.join(ROOT, "example_data");
 const DIST_FOLDER = path.join(ROOT, "dist");
 const SHOULD_BUILD = !process.argv.includes("--no-build");
 
@@ -80,6 +81,13 @@ const EXPECTED_CLASSES = {
   },
 };
 
+// One Trimester 1 report per class: track, subjects and Skore's algemeen totaal reproduced from the school weights.
+const TRIMESTER_ONE_FIXTURES = {
+  "1TC Trimester 1.xlsx": { classCode: "1TC", year: 1, trackId: "Taal_en_Cultuur", subjectCount: 13, studentCount: 11, keyRiskCount: 1, positiveProfileCount: 1 },
+  "2GL2 Trimester 1.xlsx": { classCode: "2GL2", year: 2, trackId: "Grieks_Latijn", subjectCount: 15, studentCount: 20, keyRiskCount: 0, positiveProfileCount: 10 },
+  "2MTW Trimester 1.xlsx": { classCode: "2MTW", year: 2, trackId: "Moderne_Talen_Wetenschappen_2A", subjectCount: 16, studentCount: 18, keyRiskCount: 3, positiveProfileCount: 3 },
+};
+
 const MAIN_SUBJECT_DANGER_FLAGS = new Set([
   "key_subject_critical",
   "multiple_key_subjects_weak",
@@ -105,6 +113,11 @@ function main() {
   assertNoteGuidance();
   assertMidYearClassCouncil();
   assertInterimReports();
+  assertFirstGradeInterimReports();
+  assertFirstGradeFixture();
+  assertLatinFixture();
+  assertTrimesterOneFixtures();
+  assertSteamYearOneFixture();
   assertSchoolWeights();
   assertSubjectFeedbackHandover();
   assertPriorYearReport();
@@ -202,6 +215,198 @@ function assertInterimReports() {
   assert(!analysis.periods.some((period) => period.id === "dw_4"), "Tussentijdse rapporten: ontbrekende DW-rapporten verschijnen niet");
   assertEqual(analysis.periods.slice(0, 3).map((period) => period.id).join(","), "dw_1,dw_2,dw_3", "Tussentijdse rapporten: volgorde");
   logPass("Tussentijdse rapporten: Dagelijks werk en Klassenraad herkend.");
+}
+
+function assertFirstGradeInterimReports() {
+  const schema = periodSchemaForYear(2);
+  const cases = [
+    ["2STEAM4 Dagelijks werk 1.xlsx", "dw_1"],
+    ["2STEAM4 Dagelijks werk 3.xlsx", "dw_3"],
+    ["2STEAM4 Klassenraad 1.xlsx", "kr_1"],
+    ["2STEAM4 Trimester 1.xlsx", "trimester_1"],
+    ["2STEAM4 Trimester 2.xlsx", "trimester_2"],
+    ["2STEAM4 Jaar.xlsx", "year"],
+  ];
+  for (const [fileName, expected] of cases) {
+    assertEqual(inferPeriodFromText(fileName, schema)?.id || null, expected, `Graad 1 tussentijds: periode voor ${fileName}`);
+  }
+
+  // Before the exams Skore counts an exam subject with its DW weight, a subject without an exam
+  // with its full weight (DW x 3): Wiskunde 5 x 50 + Beeld 3 x 80 -> 61.3 (after the exams: 15 x 50 + 3 x 80 -> 55).
+  const table = findSchoolWeights({ year: 2, trackId: "STEaM" });
+  const scores = [{ subject: "Wiskunde", score: 50 }, { subject: "Beeld", score: 80 }];
+  assertClose(weightedOverall(scores, table, "dw").value, 61.3, "Graad 1 tussentijds: DW-basis met vak zonder examen");
+  assertClose(weightedOverall(scores, table, "total").value, 55, "Graad 1 tussentijds: totaalbasis");
+
+  // MO (report) and MOP (weights) are the same subject.
+  assertEqual(canonicalSubject("MO"), canonicalSubject("MOP"), "Graad 1: MO en MOP zelfde vak");
+  assert(findSchoolWeights({ year: 1, trackId: "STEaM" }).subjects.some((item) => item.subject === canonicalSubject("MO")), "Graad 1: muziek heeft een gewicht");
+
+  // Short Latijn class codes ("1L3") only in years 1-2; longer aliases still win.
+  for (const [classCode, expected] of [["1L3", "Latijn"], ["2L1", "Latijn"], ["1LAT2", "Latijn"], ["2STEAM4", "STEaM"], ["3LTC1", "Latijn_TC"], ["3L1", null]]) {
+    assertEqual(inferTrackFromClassCode(classCode)?.id ?? null, expected, `Graad 1: richting voor ${classCode}`);
+  }
+  logPass("Graad 1 tussentijds: Dagelijks werk herkend, DW-basis, muziek en korte Latijn-klascodes.");
+}
+
+function assertFirstGradeFixture() {
+  const files = fs.existsSync(FIRST_GRADE_FOLDER)
+    ? fs.readdirSync(FIRST_GRADE_FOLDER).filter((fileName) => /^2STEAM4 .*\.xlsx$/i.test(fileName)).sort()
+    : [];
+  if (files.length !== 4) {
+    logPass("2STEAM4-fixture overgeslagen: example_data/2STEAM4 *.xlsx niet aanwezig.");
+    return;
+  }
+  const reports = files.map((fileName) => parseClassTeacherReportWorkbook(readWorkbook(path.join(FIRST_GRADE_FOLDER, fileName))));
+  assertEqual(reports.map((report) => report.periodId).join(","), "dw_1,dw_2,dw_3,trimester_1", "2STEAM4: periodes");
+  for (const report of reports) {
+    assertEqual(report.classCode, "2STEAM4", `2STEAM4: klascode in ${report.fileName}`);
+    assertEqual(report.totals.subjectCount, 17, `2STEAM4: vakken in ${report.fileName}`);
+    assertEqual(report.totals.studentCount, 23, `2STEAM4: leerlingen in ${report.fileName}`);
+    assertEqual(report.warnings.length, 0, `2STEAM4: waarschuwingen in ${report.fileName}`);
+    assert(report.subjects.every((subject) => subject.known), `2STEAM4: onbekend vak in ${report.fileName}`);
+  }
+
+  const [aggregation] = aggregateClassTeacherReportGroups(reports);
+  const weighted = applySchoolWeightsToAggregation(aggregation, { year: aggregation.year, trackId: aggregation.track?.id });
+  const analysis = calculateClassTeacherAnalysis(weighted);
+  assertEqual(analysis.track?.id, "STEaM", "2STEAM4: richting");
+  assertEqual(analysis.totals.interimPeriodCount, 3, "2STEAM4: 3 DW-rapporten");
+  assertEqual(analysis.totals.requiredPeriodCount, 1, "2STEAM4: 1 trimesterrapport");
+  assertClose(analysis.stats.mean, 76.4, "2STEAM4: klasgemiddelde");
+  assertEqual(analysis.stats.below65, 0, "2STEAM4: totaal onder 65");
+  assertEqual(analysis.stats.keyRiskCount, 6, "2STEAM4: hoofdvak in de gevarenzone");
+  assertEqual(analysis.stats.positiveProfileCount, 3, "2STEAM4: sterke stabiele profielen");
+
+  // Dagelijks werk 3 is the trimester 1 snapshot: the school-weighted DW total must equal Skore's algemeen totaal.
+  for (const student of analysis.students) {
+    const dw3 = student.overallScores.find((entry) => entry.periodId === "dw_3");
+    const trimester = student.overallScores.find((entry) => entry.periodId === "trimester_1");
+    assertEqual(dw3?.sourceMetric, "GEWOGEN", `2STEAM4: DW3 gewogen voor ${student.name}`);
+    assertClose(dw3.value, trimester.value, `2STEAM4: DW3 = algemeen totaal T1 voor ${student.name}`, 0.15);
+  }
+  const byName = new Map(analysis.students.map((student) => [student.name, student]));
+  assertStudentHasFlag(byName.get("Govaerts Lars"), "key_subject_critical", "2STEAM4: Govaerts IW onder 50");
+  assertStudentHasFlag(byName.get("Lenaerts Juul"), "key_subject_critical", "2STEAM4: Lenaerts Wiskunde onder 50");
+  logPass("2STEAM4: 3 DW-rapporten + trimester 1, gewogen totaal gelijk aan Skore.");
+}
+
+function assertLatinFixture() {
+  const files = fs.existsSync(FIRST_GRADE_FOLDER)
+    ? fs.readdirSync(FIRST_GRADE_FOLDER).filter((fileName) => /^1L3 .*\.xlsx$/i.test(fileName)).sort()
+    : [];
+  if (files.length !== 5) {
+    logPass("1L3-fixture overgeslagen: example_data/1L3 *.xlsx niet aanwezig.");
+    return;
+  }
+  const reports = files.map((fileName) => parseClassTeacherReportWorkbook(readWorkbook(path.join(FIRST_GRADE_FOLDER, fileName))));
+  assertEqual(reports.map((report) => report.periodId).join(","), "dw_1,dw_2,dw_3,dw_4,trimester_1", "1L3: periodes");
+  for (const report of reports) {
+    assertEqual(report.classCode, "1L3", `1L3: klascode in ${report.fileName}`);
+    assertEqual(report.trackGuess?.id, "Latijn", `1L3: richting in ${report.fileName}`);
+    assertEqual(report.totals.subjectCount, 14, `1L3: vakken in ${report.fileName}`);
+    assertEqual(report.totals.studentCount, 22, `1L3: leerlingen in ${report.fileName}`);
+    assertEqual(report.warnings.length, 0, `1L3: waarschuwingen in ${report.fileName}`);
+  }
+
+  const [aggregation] = aggregateClassTeacherReportGroups(reports);
+  const weighted = applySchoolWeightsToAggregation(aggregation, { year: aggregation.year, trackId: aggregation.track?.id });
+  const analysis = calculateClassTeacherAnalysis(weighted);
+  assertEqual(analysis.track?.id, "Latijn", "1L3: richting");
+  assertEqual(analysis.totals.keySubjectCount, 4, "1L3: hoofdvakken");
+  assertEqual(analysis.totals.interimPeriodCount, 4, "1L3: 4 DW-rapporten");
+  // DW 4 opens trimester 2 and comes after Trimester 1.
+  assertEqual(analysis.periods.filter((period) => !period.missing).map((period) => period.id).join(","), "dw_1,dw_2,dw_3,trimester_1,dw_4", "1L3: volgorde");
+  assertEqual(analysis.stats.keyRiskCount, 0, "1L3: hoofdvak in de gevarenzone");
+  assertEqual(analysis.stats.positiveProfileCount, 8, "1L3: sterke stabiele profielen");
+  assert(analysis.students.every((student) => !student.flags.some((flag) => flag.type === "unknown_track_key_subjects")), "1L3: hoofdvakken gekend");
+
+  // Skore's algemeen totaal of Trimester 1 = the school-weighted DW 3 and DW 4 totals and the card total.
+  const trimester = new Map(reports.find((report) => report.periodId === "trimester_1").students.map((student) => [student.name, student.overallScore]));
+  for (const student of analysis.students) {
+    for (const periodId of ["dw_3", "dw_4"]) {
+      const entry = student.overallScores.find((score) => score.periodId === periodId);
+      assertEqual(entry?.sourceMetric, "GEWOGEN", `1L3: ${periodId} gewogen voor ${student.name}`);
+      assertClose(entry.value, trimester.get(student.name), `1L3: ${periodId} = algemeen totaal T1 voor ${student.name}`, 0.15);
+    }
+    assertClose(student.finalWeighted, trimester.get(student.name), `1L3: kaarttotaal voor ${student.name}`, 0.15);
+  }
+  logPass("1L3: Latijn herkend, 4 DW-rapporten + trimester 1, gewogen totaal gelijk aan Skore.");
+}
+
+function assertTrimesterOneFixtures() {
+  const present = Object.keys(TRIMESTER_ONE_FIXTURES).filter((fileName) => fs.existsSync(path.join(FIRST_GRADE_FOLDER, fileName)));
+  if (!present.length) {
+    logPass("Trimester 1-fixtures overgeslagen: 1TC, 2GL2, 2MTW niet aanwezig.");
+    return;
+  }
+  for (const fileName of present) {
+    const expected = TRIMESTER_ONE_FIXTURES[fileName];
+    const report = parseClassTeacherReportWorkbook(readWorkbook(path.join(FIRST_GRADE_FOLDER, fileName)));
+    const label = expected.classCode;
+    assertEqual(report.classCode, expected.classCode, `${label}: klascode`);
+    assertEqual(report.year, expected.year, `${label}: leerjaar`);
+    assertEqual(report.periodId, "trimester_1", `${label}: periode`);
+    assertEqual(report.trackGuess?.id, expected.trackId, `${label}: richting`);
+    assertEqual(report.totals.subjectCount, expected.subjectCount, `${label}: vakken`);
+    assertEqual(report.totals.studentCount, expected.studentCount, `${label}: leerlingen`);
+    assertEqual(report.warnings.length, 0, `${label}: waarschuwingen (${report.warnings.map((item) => item.message).join(" ")})`);
+
+    // Every subject in the report has a school weight, and the DW-basis weighted total is Skore's algemeen totaal.
+    const table = findSchoolWeights({ year: report.year, trackId: report.trackGuess.id, classCode: report.classCode });
+    const weighted = new Set(table.subjects.map((item) => item.subject));
+    const unweighted = report.subjects.filter((subject) => !weighted.has(subject.canonical)).map((subject) => subject.raw);
+    assertEqual(unweighted.join(","), "", `${label}: vakken zonder schoolgewicht`);
+    for (const student of report.students) {
+      assertClose(weightedOverall(student.subjectScores, table, "dw").value, student.overallScore, `${label}: gewogen totaal = algemeen totaal voor ${student.name}`, 0.25);
+    }
+
+    const [analysis] = aggregateClassTeacherReportGroups([report]).map((aggregation) => calculateClassTeacherAnalysis(aggregation));
+    assertEqual(analysis.stats.keyRiskCount, expected.keyRiskCount, `${label}: hoofdvak in de gevarenzone`);
+    assertEqual(analysis.stats.positiveProfileCount, expected.positiveProfileCount, `${label}: sterke stabiele profielen`);
+  }
+  logPass(`Trimester 1-fixtures: ${present.map((fileName) => TRIMESTER_ONE_FIXTURES[fileName].classCode).join(", ")} met schoolgewichten gelijk aan Skore.`);
+}
+
+function assertSteamYearOneFixture() {
+  const files = fs.existsSync(FIRST_GRADE_FOLDER)
+    ? fs.readdirSync(FIRST_GRADE_FOLDER).filter((fileName) => /^1STEAM3 .*\.xlsx$/i.test(fileName)).sort()
+    : [];
+  if (files.length !== 4) {
+    logPass("1STEAM3-fixture overgeslagen: example_data/1STEAM3 *.xlsx niet aanwezig.");
+    return;
+  }
+  const reports = files.map((fileName) => parseClassTeacherReportWorkbook(readWorkbook(path.join(FIRST_GRADE_FOLDER, fileName))));
+  assertEqual(reports.map((report) => report.periodId).join(","), "dw_1,dw_2,dw_3,trimester_1", "1STEAM3: periodes");
+  for (const report of reports) {
+    assertEqual(report.trackGuess?.id, "STEaM", `1STEAM3: richting in ${report.fileName}`);
+    assertEqual(report.totals.subjectCount, 16, `1STEAM3: vakken in ${report.fileName}`);
+    assertEqual(report.totals.studentCount, 21, `1STEAM3: leerlingen in ${report.fileName}`);
+    assertEqual(report.warnings.length, 0, `1STEAM3: waarschuwingen in ${report.fileName}`);
+    // Skore writes the apostrophe as "&#039;"; the browser's DOMParser decodes it, so the Node reader must too.
+    assert(report.students.some((student) => student.name === "D'Haese Liam"), `1STEAM3: naam met apostrof in ${report.fileName}`);
+  }
+
+  const [aggregation] = aggregateClassTeacherReportGroups(reports);
+  const analysis = calculateClassTeacherAnalysis(applySchoolWeightsToAggregation(aggregation, { year: aggregation.year, trackId: aggregation.track?.id }));
+  assertEqual(analysis.totals.keySubjectCount, 6, "1STEAM3: hoofdvakken (met Digiwiskunde)");
+  assertEqual(analysis.stats.keyRiskCount, 7, "1STEAM3: hoofdvak in de gevarenzone");
+  assertClose(analysis.stats.mean, 78, "1STEAM3: klasgemiddelde");
+
+  const trimester = new Map(reports.find((report) => report.periodId === "trimester_1").students.map((student) => [student.name, student.overallScore]));
+  for (const student of analysis.students) {
+    const dw3 = student.overallScores.find((entry) => entry.periodId === "dw_3");
+    assertEqual(dw3?.sourceMetric, "GEWOGEN", `1STEAM3: DW3 gewogen voor ${student.name}`);
+    assertClose(dw3.value, trimester.get(student.name), `1STEAM3: DW3 = algemeen totaal T1 voor ${student.name}`, 0.15);
+  }
+
+  // Exactly the pupils in Skore's Onvoldoendes list with a main subject below 50.
+  const critical = analysis.students
+    .filter((student) => student.flags.some((flag) => flag.type === "key_subject_critical"))
+    .map((student) => student.name)
+    .sort();
+  assertEqual(critical.join(", "), "De Keijser Finn, Gheysens Leon, Lenaerts Basiel, Philips Silas, Semmouri Ibrahiem", "1STEAM3: hoofdvak onder 50");
+  logPass("1STEAM3: Digiwiskunde, apostrof in naam, DW3 gelijk aan Skore, hoofdvak onder 50 zoals Skore.");
 }
 
 function assertSchoolWeights() {

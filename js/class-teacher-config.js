@@ -135,6 +135,15 @@ function withInterimPeriods(schema, layout) {
 withInterimPeriods(CLASS_TEACHER_PERIOD_SCHEMAS.year_3_4, [
   "dw_1", "kr_1", "dw_2", "dw_3", "semester_1", "dw_4", "dw_5", "semester_2_prelim", "dw_6", "dw_7", "semester_2", "year",
 ]);
+// Years 1-2 (trimesters). Seen in a 2nd-year export (2STEAM4, 2026-11): Dagelijks werk 1, 2 and 3
+// are snapshots of trimester 1 to date, then Trimester 1. Later trimesters are assumed to follow the
+// same rhythm (three DW reports each); a Klassenraad report may sit after the second one.
+withInterimPeriods(CLASS_TEACHER_PERIOD_SCHEMAS.year_1_2, [
+  "dw_1", "dw_2", "kr_1", "dw_3", "trimester_1",
+  "dw_4", "dw_5", "kr_2", "dw_6", "trimester_2",
+  "dw_7", "dw_8", "kr_3", "dw_9", "trimester_3",
+  "year",
+]);
 // Assumed to follow the same rhythm without the provisional semester-2 report.
 withInterimPeriods(CLASS_TEACHER_PERIOD_SCHEMAS.year_5_6, [
   "dw_1", "kr_1", "dw_2", "dw_3", "semester_1", "dw_4", "dw_5", "dw_6", "dw_7", "semester_2", "year",
@@ -156,7 +165,7 @@ export const SUBJECT_ALIASES = new Map([
   ["FRVAA", "Frans vaardigheden"],
   ["FRANS VAARDIGHEDEN", "Frans vaardigheden"],
   ["DTAI", "Design Thinking"],
-  ["MOP", "Muziek"],
+  ["MOP", "Muzikale opvoeding"],
   ["EST", "Esthetica"],
   ["NAT", "Natuurwetenschappen"],
   ["NATUURWETENSCHAPPEN", "Natuurwetenschappen"],
@@ -173,9 +182,10 @@ export const SUBJECT_ALIASES = new Map([
   ["COM", "Communicatiewetenschappen en Taaltechnologie"],
   ["COMMUNICATIE WETENSCHAPPEN EN TAALTECHNOLOGIE", "Communicatiewetenschappen en Taaltechnologie"],
   ["SFG", "SE²AL"],
-  ["MUZIEK", "Muziek"],
+  ["MUZIEK", "Muzikale opvoeding"],
   ["LOP", "Lichamelijke opvoeding"],
   ["PROJECT MT", "Moderne talen"],
+  ["MT", "Moderne talen"], // report code in 2MTW (2026-11)
   ["MODERNE TALEN", "Moderne talen"],
   ["ALGTO", "Algemeen totaal"],
   ["ALGEMEEN TOTAAL", "Algemeen totaal"],
@@ -255,6 +265,8 @@ export const TRACK_KEY_SUBJECTS = {
     years: [1, 2],
     label: "Latijn",
     aliases: ["LAT", "LATIJN", "1LAT", "2LAT"],
+    // Short class codes such as "1L3" (seen 2026-11): year, "L", class number.
+    classCodePatterns: [/^[12]\s*L\s*\d+$/i],
     keySubjects: ["Wiskunde", "Frans", "Nederlands", "Latijn"],
   },
   Grieks_Latijn: {
@@ -413,16 +425,18 @@ export function inferTrackFromClassCode(classCode, year = inferYearFromClassCode
   }))).sort((a, b) => b.key.length - a.key.length);
   const compactText = text.replace(/\s+/g, "");
 
+  const asTrack = (option) => ({
+    id: option.id,
+    label: option.label,
+    keySubjects: option.keySubjects,
+    confidence: option.confidence || "inferred",
+  });
   for (const candidate of candidates) {
-    if (candidate.key && compactText.includes(candidate.key)) {
-      return {
-        id: candidate.option.id,
-        label: candidate.option.label,
-        keySubjects: candidate.option.keySubjects,
-        confidence: candidate.option.confidence || "inferred",
-      };
-    }
+    if (candidate.key && compactText.includes(candidate.key)) return asTrack(candidate.option);
   }
+  // Short codes without a track alias ("1L3"), only for the years the track exists in.
+  const byPattern = options.find((option) => option.classCodePatterns.some((pattern) => pattern.test(text.trim())));
+  if (byPattern) return asTrack(byPattern);
   return {
     id: null,
     label: "",
@@ -440,6 +454,7 @@ export function trackOptionsForYear(year) {
       years: config.years || [],
       aliases: config.aliases || [],
       keySubjects: config.keySubjects || [],
+      classCodePatterns: config.classCodePatterns || [],
       confidence: config.confidence || "school_offer",
     }))
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));

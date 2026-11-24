@@ -201,6 +201,9 @@ function decodeXml(value) {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, "\"")
     .replace(/&apos;/g, "'")
+    // Numeric character references, e.g. Skore writes D'Haese as "D&#039;Haese" (as the browser's DOMParser does).
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(Number(decimal)))
     .replace(/&amp;/g, "&");
 }
 
